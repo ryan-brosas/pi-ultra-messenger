@@ -12,6 +12,43 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { getAgentDir } from '@earendil-works/pi-coding-agent';
 
+export type PiModelSelection =
+  | { mode: 'inherit' }
+  | { mode: 'exact'; model: string };
+
+export interface WorkerPoolConfig {
+  id: string;
+  workers: number;
+  model: PiModelSelection;
+  roleFile?: string;
+  enabled: boolean;
+}
+
+export interface CoordinatorConfig {
+  enabled: boolean;
+  model: PiModelSelection;
+  roleFile?: string;
+  mode: 'manual' | 'interval';
+  intervalMinutes?: number;
+}
+
+export interface GoalRefinerConfig {
+  enabled: boolean;
+  model: PiModelSelection;
+  roleFile?: string;
+  mode: 'manual';
+}
+
+export interface SupervisorConfig {
+  enabled: boolean;
+  paused: boolean;
+  pollIntervalMs: number;
+  maxStartsPerTick: number;
+  workerPools: WorkerPoolConfig[];
+  coordinator: CoordinatorConfig;
+  goalRefiner: GoalRefinerConfig;
+}
+
 export interface MessengerConfig {
   autoRegister: boolean;
   autoRegisterPaths: string[];
@@ -29,12 +66,37 @@ export interface MessengerConfig {
   autoOverlay: boolean;
   swarmEventsInFeed: boolean;
   maxConcurrentSpawns: number;
+  supervisor: SupervisorConfig;
 }
+const DEFAULT_SUPERVISOR: SupervisorConfig = {
+  enabled: false,
+  paused: false,
+  pollIntervalMs: 15_000,
+  maxStartsPerTick: 2,
+  workerPools: [
+    {
+      id: 'default',
+      workers: 3,
+      model: { mode: 'inherit' },
+      enabled: true,
+    },
+  ],
+  coordinator: {
+    enabled: false,
+    model: { mode: 'inherit' },
+    mode: 'manual',
+  },
+  goalRefiner: {
+    enabled: false,
+    model: { mode: 'inherit' },
+    mode: 'manual',
+  },
+};
 
 const DEFAULT_CONFIG: MessengerConfig = {
   autoRegister: false,
   autoRegisterPaths: [],
-  scopeToFolder: true, // Default to project-scoped isolation for swarm safety
+  scopeToFolder: true,
   contextMode: 'full',
   registrationContext: true,
   replyHint: true,
@@ -47,7 +109,9 @@ const DEFAULT_CONFIG: MessengerConfig = {
   autoOverlay: true,
   swarmEventsInFeed: true,
   maxConcurrentSpawns: 3,
+  supervisor: DEFAULT_SUPERVISOR,
 };
+
 
 function readJsonFile(path: string): Record<string, unknown> | null {
   if (!existsSync(path)) return null;
@@ -125,6 +189,42 @@ export function getAutoRegisterPaths(): string[] {
   }
 }
 
+function mergeSupervisor(sup?: Partial<SupervisorConfig>): SupervisorConfig {
+  if (!sup) return DEFAULT_SUPERVISOR;
+  return {
+    enabled: sup.enabled === true,
+    paused: sup.paused === true,
+    pollIntervalMs: typeof sup.pollIntervalMs === 'number' && sup.pollIntervalMs > 0 ? sup.pollIntervalMs : DEFAULT_SUPERVISOR.pollIntervalMs,
+    maxStartsPerTick: typeof sup.maxStartsPerTick === 'number' && sup.maxStartsPerTick > 0 ? sup.maxStartsPerTick : DEFAULT_SUPERVISOR.maxStartsPerTick,
+    workerPools: Array.isArray(sup.workerPools) && sup.workerPools.length > 0
+      ? sup.workerPools.map((p, i) => ({
+          id: p.id || `pool-${i}`,
+          workers: typeof p.workers === 'number' ? p.workers : 3,
+          model: p.model || { mode: 'inherit' },
+          roleFile: p.roleFile,
+          enabled: p.enabled !== false,
+        }))
+      : DEFAULT_SUPERVISOR.workerPools,
+    coordinator: sup.coordinator
+      ? {
+          enabled: sup.coordinator.enabled === true,
+          model: sup.coordinator.model || { mode: 'inherit' },
+          roleFile: sup.coordinator.roleFile,
+          mode: sup.coordinator.mode || 'manual',
+          intervalMinutes: sup.coordinator.intervalMinutes,
+        }
+      : DEFAULT_SUPERVISOR.coordinator,
+    goalRefiner: sup.goalRefiner
+      ? {
+          enabled: sup.goalRefiner.enabled === true,
+          model: sup.goalRefiner.model || { mode: 'inherit' },
+          roleFile: sup.goalRefiner.roleFile,
+          mode: 'manual',
+        }
+      : DEFAULT_SUPERVISOR.goalRefiner,
+  };
+}
+
 export function loadConfig(cwd: string): MessengerConfig {
   const projectPath = join(cwd, '.pi', 'pi-messenger.json');
   const extensionGlobalPath = join(getAgentDir(), 'pi-messenger.json');
@@ -180,6 +280,7 @@ export function loadConfig(cwd: string): MessengerConfig {
       typeof merged.maxConcurrentSpawns === 'number' && merged.maxConcurrentSpawns > 0
         ? merged.maxConcurrentSpawns
         : DEFAULT_CONFIG.maxConcurrentSpawns,
+    supervisor: mergeSupervisor(merged.supervisor),
   };
 
   if (merged.contextMode === 'none') {
