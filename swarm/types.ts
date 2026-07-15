@@ -45,6 +45,19 @@ export interface SwarmSummary {
   blocked: number;
 }
 
+export type WorkerPhase =
+  | 'starting'
+  | 'reading_rules'
+  | 'coordinating'
+  | 'claiming'
+  | 'implementing'
+  | 'testing'
+  | 'reviewing'
+  | 'committing'
+  | 'finishing'
+  | 'blocked'
+  | 'idle';
+
 export interface SpawnRequest {
   role?: string;
   persona?: string;
@@ -69,6 +82,11 @@ export interface SpawnedAgent {
   systemPrompt?: string;
   status: 'running' | 'completed' | 'failed' | 'stopped';
   poolId?: string;
+  phase?: WorkerPhase;
+  currentBeadId?: string;
+  statusMessage?: string;
+  agentMailName?: string;
+  lastProgressAt?: string;
   startedAt: string;
   endedAt?: string;
   exitCode?: number;

@@ -15,9 +15,11 @@ import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { MessengerState, Dirs } from './lib.js';
 import * as handlers from './handlers.js';
 import type { MessengerActionParams } from './action-types.js';
+import type { WorkerPhase } from './swarm/types.js';
 import { result } from './swarm/result.js';
 import { executeSpawn, executeSwarmStatus } from './swarm/handlers.js';
 import { getEffectiveSessionId } from './store/shared.js';
+import { updateSpawnStatus } from './swarm/spawn.js';
 
 export interface RouterConfig {
   maxConcurrentSpawns?: number;
@@ -61,13 +63,32 @@ export async function executeAction(
     );
   }
 
-  // Spawn and swarm work without registration
+  // Spawn, swarm, and worker telemetry work without registration
   switch (group) {
     case 'spawn':
       return executeSpawn(op, params, state, cwd, sessionId, config?.maxConcurrentSpawns);
 
     case 'swarm':
       return executeSwarmStatus(cwd, state.currentChannel || '', sessionId);
+
+    case 'worker':
+      if (op === 'status') {
+        const spawnId = (params.id || params.message) as string | undefined;
+        if (!spawnId) {
+          return result('Error: worker status requires an id.', { mode: 'worker.status', error: 'missing_id' });
+        }
+        const updated = updateSpawnStatus(cwd, spawnId, {
+          phase: params.phase as WorkerPhase | undefined,
+          currentBeadId: params.taskId,
+          statusMessage: params.message,
+          agentMailName: params.name,
+        });
+        if (!updated) {
+          return result(`Error: worker ${spawnId} not found.`, { mode: 'worker.status', error: 'not_found' });
+        }
+        return result(`Status updated for ${updated.name}.`, { mode: 'worker.status', agent: updated });
+      }
+      return result(`Unknown worker operation: ${op}`, { mode: 'error', error: 'unknown_operation' });
   }
 
   // Status and list require registration (agent-presence views)

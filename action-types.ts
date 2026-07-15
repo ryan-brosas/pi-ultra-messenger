@@ -45,6 +45,7 @@ export interface MessengerActionParams {
   objective?: string;
   context?: string;
   model?: string; // 'inherit' or 'provider/model'
+  phase?: string; // Worker telemetry phase
   agentFile?: string;
   messageFile?: string;
   force?: boolean;

@@ -133,24 +133,43 @@ export function buildPoolRuntime(
 }
 
 /**
- * Compute refill order: pools with the largest deficit first, up to globalFree.
+ * Compute refill order: deterministic round-robin across pools with deficits.
+ * Each round gives one worker to the next pool that still has a deficit,
+ * cycling through pools in config order until globalFree is exhausted.
  */
 export function poolRefillOrder(
   pools: PoolRuntime[],
   globalFree: number,
 ): PoolRefillOrderItem[] {
-  const deficitPools = pools
-    .filter((p) => p.deficit > 0 && p.modelAvailable)
-    .sort((a, b) => b.deficit - a.deficit);
+  const eligible = pools.filter((p) => p.deficit > 0 && p.modelAvailable);
+  if (eligible.length === 0) return [];
 
   const order: PoolRefillOrderItem[] = [];
-  let remaining = globalFree;
-  for (const pool of deficitPools) {
-    if (remaining <= 0) break;
-    const starts = Math.min(pool.deficit, remaining);
-    order.push({ poolId: pool.config.id, starts });
-    remaining -= starts;
+  const remaining = new Map<string, number>();
+  for (const p of eligible) remaining.set(p.config.id, p.deficit);
+
+  let totalToStart = Math.min(globalFree, eligible.reduce((s, p) => s + p.deficit, 0));
+
+  while (totalToStart > 0) {
+    let startedAny = false;
+    for (const pool of eligible) {
+      if (totalToStart <= 0) break;
+      const left = remaining.get(pool.config.id) ?? 0;
+      if (left <= 0) continue;
+
+      const existing = order.find((o) => o.poolId === pool.config.id);
+      if (existing) {
+        existing.starts++;
+      } else {
+        order.push({ poolId: pool.config.id, starts: 1 });
+      }
+      remaining.set(pool.config.id, left - 1);
+      totalToStart--;
+      startedAny = true;
+    }
+    if (!startedAny) break;
   }
+
   return order;
 }
 

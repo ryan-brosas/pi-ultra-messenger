@@ -8,7 +8,7 @@ import { getAgentDir } from '@earendil-works/pi-coding-agent';
 import { generateMemorableName } from '../lib.js';
 import { createProgress, parseJsonlLine, updateProgress } from './progress.js';
 import { removeLiveWorker, updateLiveWorker } from './live-progress.js';
-import type { SpawnRequest, SpawnedAgent } from './types.js';
+import type { SpawnRequest, SpawnedAgent, WorkerPhase } from './types.js';
 import { formatRoleLabel } from './labels.js';
 import { loadAgentDefinition } from './agent-loader.js';
 
@@ -553,6 +553,30 @@ export function listSpawned(
 
 export function listSpawnedHistory(cwd: string, sessionId: string): SpawnedAgent[] {
   return listSpawned(cwd, sessionId, true);
+}
+
+export function updateSpawnStatus(
+  cwd: string,
+  id: string,
+  patch: Partial<Pick<SpawnedAgent, 'phase' | 'currentBeadId' | 'statusMessage' | 'agentMailName'>>,
+): SpawnedAgent | null {
+  const runtime = runtimes.get(id);
+  if (!runtime || runtime.record.cwd !== cwd) return null;
+
+  runtime.record = {
+    ...runtime.record,
+    ...patch,
+    lastProgressAt: new Date().toISOString(),
+  };
+
+  appendEvent(cwd, runtime.record.sessionId ?? '', {
+    id,
+    type: 'progress',
+    timestamp: new Date().toISOString(),
+    agent: { ...patch },
+  });
+
+  return runtime.record;
 }
 
 export function findSpawnedAgentByName(
