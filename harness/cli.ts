@@ -663,6 +663,14 @@ Environment:
   }
 
   // --- JSON passthrough ---
+  if (first.startsWith('{')) {
+    if (!(await startServer())) process.exit(1);
+    await postAction(first);
+    return;
+  }
+
+  // --- Natural subcommands ---
+  if (!(await startServer())) process.exit(1);
 
   // Auto-restart the server if its version doesn't match the CLI's.
   // A stale server silently breaks identity resolution, session handling,
@@ -681,15 +689,12 @@ Environment:
       process.stderr.write(
         `Server version mismatch (server=${health.version}, cli=${CLI_VERSION}). Restarting with spawn preservation...\n`
       );
-      // Tell the old server to quit but preserve spawned agents
       try {
         await httpPost(`${BASE_URL}/quit`, '', { 'x-preserve-spawns': '1' });
       } catch {
         // Server may already be gone
       }
-      // Wait for the old server to release the port
       await new Promise((r) => setTimeout(r, 500));
-      // Spawn a fresh one
       if (!(await startServer())) {
         process.stderr.write(`Failed to restart server after version mismatch.\n`);
         process.exit(1);
