@@ -149,7 +149,6 @@ function generateAgentFile(cwd: string, sessionId: string, agent: SpawnedAgent):
     ...(agent.endedAt ? [`ended: ${agent.endedAt}`] : []),
     ...(agent.exitCode !== undefined ? [`exitCode: ${agent.exitCode}`] : []),
     ...(agent.pid ? [`pid: ${agent.pid}`] : []),
-    ...(agent.taskId ? [`taskId: ${agent.taskId}`] : []),
     '---',
     '',
     agent.systemPrompt,
@@ -165,23 +164,26 @@ function generateAgentFile(cwd: string, sessionId: string, agent: SpawnedAgent):
 }
 
 /**
- * The swarm operating protocol — always appended to every subagent's system prompt.
- * Pull-based: agents read the feed themselves. No RPC push.
+ * Worker operating protocol — appended to every worker's system prompt.
+ * Workers coordinate through MCP Agent Mail and follow the target project's
+ * AGENTS.md directly. No pi-messenger-swarm task/feed/channel/reservation commands.
  */
 function buildSwarmProtocol(): string {
   return [
-    '## Swarm Operating Protocol',
-    '1. Join the mesh first: `pi-messenger-swarm join`.',
-    '2. Coordinate via messaging/reservations/task actions before risky edits.',
-    '3. Task claiming is required: If assigned a taskId, claim it before beginning work: `pi-messenger-swarm task claim <taskId>`. Failure to claim indicates another agent owns it; report the conflict and await further instruction.',
-    '4. You were spawned by a coordinator agent. That agent delegated this task to you — it will NOT claim or implement this task itself. You own it.',
-    '5. Progress updates are required: Update task progress every 3-5 tool calls or at significant milestones: `pi-messenger-swarm task progress <taskId> "Specific achievement and rationale"`.',
-    '6. Task completion is required: Mark the task done upon mission completion: `pi-messenger-swarm task done <taskId> "Concrete accomplishment with evidence"`.',
-    '6.5 Report findings IN the task.done summary or task.progress messages — not just in your response text. The coordinator reads your output via `pi-messenger-swarm task show <taskId>`, so all findings must be in the task record. The feed only shows one-line previews.',
-    '7. Be concise, evidence-based, and stay in role.',
-    '8. Clarify ambiguity early: if mission scope, expected output format, or framing is unclear or seems incomplete, send a brief targeted question via `pi-messenger-swarm send AgentName "..."` before proceeding. A 30-second alignment check prevents off-target work.',
-    '9. Check channel feed between turns: `pi-messenger-swarm feed --limit 10`. If a teammate sent you a message, respond before proceeding. Messages are channel-mediated — reading the feed is required to receive them. This is pull-based: nobody pushes messages to you.',
-    '10. Exit immediately after marking task done: `bash({ command: "exit 0" })`. Do not stay alive after your mission is complete. Do not monitor the feed, wait for messages, or idle. Once you have called `pi-messenger-swarm task done`, you are done — exit right after. Remaining alive wastes resources and signals incomplete work.',
+    '## Worker Operating Protocol',
+    '1. First read ALL of AGENTS.md and README.md in the project root and understand them.',
+    '   They define the project rules, safety requirements, tools, checks, Git workflow,',
+    '   and coordination protocol. Follow them even when this mission is shorter.',
+    '2. Register or resume your MCP Agent Mail identity using PI_AGENT_NAME as the requested name.',
+    '   Check your inbox and active agents.',
+    '3. Reserve the smallest exact file set in Agent Mail for the work assigned to you.',
+    '   Announce the work in the relevant Agent Mail thread.',
+    '4. Implement the assigned work completely, following AGENTS.md for checks, self-review,',
+    '   UBS/RCH/DCG, Git commit/push, reservation release, and handoff.',
+    '5. Be concise, evidence-based, and stay in role.',
+    '6. After any context compaction, reread the root AGENTS.md before continuing.',
+    '7. EXIT IMMEDIATELY after completing the work: bash({ command: "exit 0" }).',
+    '   Do not stay alive after your mission is complete. Do not idle or monitor.',
   ].join('\n');
 }
 
@@ -191,10 +193,10 @@ function buildSystemPrompt(request: SpawnRequest): string {
   const objective = (request.objective ?? request.message ?? '').trim();
 
   const lines: string[] = [
-    '# Swarm Subagent Role',
+    '# Worker Role',
     '',
     '## Role Description',
-    `You are a specialized ${role} operating as an autonomous subagent inside a collaborative swarm.`,
+    `You are a specialized ${role} operating as an autonomous worker.`,
   ];
 
   if (persona) {
@@ -205,8 +207,6 @@ function buildSystemPrompt(request: SpawnRequest): string {
   lines.push('', '## Mission Focus', objective);
 
   if (request.context?.trim()) lines.push('', '## Context & Constraints', request.context.trim());
-
-  if (request.taskId) lines.push('', '## Assigned Task', `Primary task: ${request.taskId}`);
 
   lines.push('', buildSwarmProtocol());
 
@@ -219,37 +219,13 @@ function buildPrompt(request: SpawnRequest): string {
 
   if (request.context?.trim()) lines.push('', '## Additional Context', request.context.trim());
 
-  if (request.taskId) {
-    lines.push(
-      '',
-      '## Task Execution Procedure',
-      'Follow this sequence when executing an assigned task:',
-      '',
-      '1. Claim the task before starting:',
-      `   pi-messenger-swarm task claim ${request.taskId}`,
-      '   If the claim fails, report the conflict and await instruction. Do not proceed with unclaimed work.',
-      '',
-      '2. Update progress at regular intervals:',
-      `   pi-messenger-swarm task progress ${request.taskId} "Specific milestone achieved"`,
-      '   Send updates every 3-5 tool calls or upon completing significant milestones. Include what was done and why.',
-      '',
-      '3. Mark the task done upon completion:',
-      `   pi-messenger-swarm task done ${request.taskId} "Concrete accomplishment with evidence"`,
-      '   Provide evidence of completion in the summary.'
-    );
-  }
-
   lines.push(
     '',
     '## Definition of Done',
     '- Objective addressed with concrete output.',
-    request.taskId
-      ? '- Progress updates recorded via pi-messenger-swarm at appropriate intervals.'
-      : '',
-    request.taskId ? '- Task marked done via pi-messenger-swarm before exit.' : '',
-    '- All findings and evidence recorded in task progress/done (the coordinator reads output via `pi-messenger-swarm task show`, not your response text).',
-    '- Any file reservations released before exit.',
-    '- EXIT IMMEDIATELY after task.done: bash({ command: "exit 0" }). Do not idle or monitor after completion.'
+    '- All work committed and pushed following AGENTS.md Git rules.',
+    '- File reservations released via Agent Mail before exit.',
+    '- EXIT IMMEDIATELY after completion: bash({ command: "exit 0" }).',
   );
 
   return lines.join('\n');
@@ -351,8 +327,8 @@ function attachHandlers(
       const event = parseJsonlLine(line);
       if (!event) continue;
       updateProgress(state.progress, event, state.startMs);
-      updateLiveWorker(state.cwd, state.request.taskId || spawnLiveKey(state.id), {
-        taskId: state.request.taskId || spawnLiveKey(state.id),
+      updateLiveWorker(state.cwd, spawnLiveKey(state.id), {
+        taskId: spawnLiveKey(state.id),
         agent: 'swarm-subagent',
         name: state.name,
         progress: {
@@ -397,8 +373,7 @@ function attachHandlers(
 
   proc.on('close', (code, signal) => {
     cleanupTmpDir(promptTmpDir);
-    removeLiveWorker(state.cwd, state.request.taskId || spawnLiveKey(state.id));
-
+    removeLiveWorker(state.cwd, spawnLiveKey(state.id));
     const runtime = runtimes.get(state.id);
     if (!runtime) return;
 
@@ -490,7 +465,6 @@ export function spawnSubagent(
     persona: request.persona,
     objective,
     context: request.context,
-    taskId: request.taskId,
     status: 'running',
     startedAt,
     sessionId,
@@ -1071,7 +1045,7 @@ function startDetachedPolling(): void {
           }
         }
 
-        removeLiveWorker(runtime.record.cwd, runtime.record.taskId || spawnLiveKey(id));
+        removeLiveWorker(runtime.record.cwd, spawnLiveKey(id));
       }
     }
 

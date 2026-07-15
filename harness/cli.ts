@@ -1,44 +1,27 @@
 #!/usr/bin/env node
 /**
- * pi-messenger-swarm — natural CLI for multi-agent coordination.
+ * pi-ultra-messenger — Pi worker pool CLI.
  *
  * Usage:
- *   pi-messenger-swarm join [--channel dev]
- *   pi-messenger-swarm swarm [--channel dev]
- *   pi-messenger-swarm task list
- *   pi-messenger-swarm task claim task-1
- *   pi-messenger-swarm task create --title "Fix bug" [--content "..."] [--depends-on task-2]
- *   pi-messenger-swarm task progress task-1 "Fixed the race"
- *   pi-messenger-swarm task done task-1 "All tests passing"
- *   pi-messenger-swarm task show task-1
- *   pi-messenger-swarm task unclaim task-1
- *   pi-messenger-swarm task block task-1 [--reason "Awaiting API"]
- *   pi-messenger-swarm task unblock task-1
- *   pi-messenger-swarm task reset task-1 [--cascade]
- *   pi-messenger-swarm task archive-done
- *   pi-messenger-swarm task ready
- *   pi-messenger-swarm send AgentName "Hello there"
- *   pi-messenger-swarm send #memory "Remember this"
- *   pi-messenger-swarm feed [--limit 20] [--channel dev]
- *   pi-messenger-swarm status
- *   pi-messenger-swarm list
- *   pi-messenger-swarm whois AgentName
- *   pi-messenger-swarm reserve src/auth/ [--reason task-1]
- *   pi-messenger-swarm release
- *   pi-messenger-swarm set-status "debugging auth"
- *   pi-messenger-swarm rename NewName
- *   pi-messenger-swarm spawn --role Researcher "Analyze the protocol" --task-id task-1 [--persona "..."] [--agent-file path] [--objective "..."] [--context "..."] [--message-file <path>] [--force]
- *   pi-messenger-swarm spawn list
- *   pi-messenger-swarm spawn history
- *   pi-messenger-swarm spawn stop <id>
- *   pi-messenger-swarm --status
- *   pi-messenger-swarm --start
- *   pi-messenger-swarm --stop
- *   pi-messenger-swarm --restart
- *   pi-messenger-swarm --logs
+ *   pi-ultra-messenger status
+ *   pi-ultra-messenger list
+ *   pi-ultra-messenger swarm
+ *   pi-ultra-messenger spawn --role Researcher "Analyze the protocol" [--persona "..."] [--agent-file path] [--objective "..."] [--context "..."] [--message-file <path>]
+ *   pi-ultra-messenger spawn list
+ *   pi-ultra-messenger spawn history
+ *   pi-ultra-messenger spawn stop <id>
+ *   pi-ultra-messenger --status
+ *   pi-ultra-messenger --start
+ *   pi-ultra-messenger --stop
+ *   pi-ultra-messenger --restart
+ *   pi-ultra-messenger --logs
  *
  * Also accepts JSON for programmatic use:
- *   pi-messenger-swarm '{ "action": "task.claim", "id": "task-1" }'
+ *   pi-ultra-messenger '{ "action": "spawn", "role": "Researcher", "message": "Analyze X" }'
+ *
+ * Coordination surfaces (task/feed/send/reserve/release/channels/join/whois/rename/set_status)
+ * have been removed. Workers coordinate through MCP Agent Mail and follow the target
+ * project's AGENTS.md directly.
  *
  * Agent identity is resolved automatically from the process tree —
  * no environment variables required. The CLI finds its parent pi process
@@ -454,59 +437,32 @@ async function main(): Promise<void> {
 
   // --- Meta commands (no server needed for --help) ---
   if (first === '--help' || first === '-h') {
-    process.stdout.write(`pi-messenger-swarm — multi-agent coordination CLI
+    process.stdout.write(`pi-ultra-messenger — Pi worker pool CLI
 
 Usage:
-  pi-messenger-swarm join [--channel dev] [--create]
-  pi-messenger-swarm status
-  pi-messenger-swarm list
-  pi-messenger-swarm whois <name>
-  pi-messenger-swarm feed [--limit 20] [--channel dev]
-  pi-messenger-swarm send <to> <message>
-  pi-messenger-swarm swarm [--channel dev]
-  pi-messenger-swarm reserve <path...> [--reason <text>]
-  pi-messenger-swarm release [--paths <path...>]
-  pi-messenger-swarm set-status <message>
-  pi-messenger-swarm rename <name>
+  pi-ultra-messenger status
+  pi-ultra-messenger list
+  pi-ultra-messenger swarm
 
-  pi-messenger-swarm task list
-  pi-messenger-swarm task ready
-  pi-messenger-swarm task show <id>
-  pi-messenger-swarm task create --title "..." [--content "..."] [--depends-on <id>]
-  pi-messenger-swarm task claim <id>
-  pi-messenger-swarm task unclaim <id>
-  pi-messenger-swarm task progress <id> <message>
-  pi-messenger-swarm task done <id> <summary>
-  pi-messenger-swarm task block <id> [--reason "..."]
-  pi-messenger-swarm task unblock <id>
-  pi-messenger-swarm task reset <id> [--cascade]
-  pi-messenger-swarm task archive-done
+  pi-ultra-messenger spawn --role Researcher "Analyze X" [--persona "..."] [--name <name>] [--agent-file <path>] [--objective "..."] [--context "..."] [--message-file <path>]
+  pi-ultra-messenger spawn list
+  pi-ultra-messenger spawn history
+  pi-ultra-messenger spawn stop <id>
 
-  pi-messenger-swarm spawn --role Researcher "Analyze X" --task-id <id> [--persona "..."] [--name <name>] [--agent-file <path>] [--objective "..."] [--context "..."] [--message-file <path>] [--force]
-  pi-messenger-swarm spawn list
-  pi-messenger-swarm spawn history
-  pi-messenger-swarm spawn stop <id>
-
-  pi-messenger-swarm --status    Check if harness server is running
-  pi-messenger-swarm --start     Start the harness server
-  pi-messenger-swarm --stop      Stop the harness server
-  pi-messenger-swarm channels [--all]
-
-  pi-messenger-swarm --status    Check if harness server is running
-  pi-messenger-swarm --start     Start the harness server
-  pi-messenger-swarm --stop      Stop the harness server
-  pi-messenger-swarm --restart    Restart the harness server
-  pi-messenger-swarm --logs      Tail the server log
+  pi-ultra-messenger --status    Check if harness server is running
+  pi-ultra-messenger --start     Start the harness server
+  pi-ultra-messenger --stop      Stop the harness server
+  pi-ultra-messenger --restart   Restart the harness server
+  pi-ultra-messenger --logs      Tail the server log
 
 Also accepts JSON for programmatic use:
-  pi-messenger-swarm '{ "action": "join" }'
-  pi-messenger-swarm '{ "action": "task.claim", "id": "task-1" }'
+  pi-ultra-messenger '{ "action": "spawn", "role": "Researcher", "message": "Analyze X" }'
 
 Environment:
   PI_MESSENGER_PORT     Server port (default: 9877)
   PI_MESSENGER_LOG      Log file (default: /tmp/pi-messenger-swarm.log)
-  PI_MESSENGER_DIR     Data directory (project-scoped by default)
-  PI_MESSENGER_GLOBAL  Use global data directory if set
+  PI_MESSENGER_DIR      Data directory (project-scoped by default)
+  PI_MESSENGER_GLOBAL   Use global data directory if set
 `);
     return;
   }
@@ -613,15 +569,6 @@ Environment:
   const action = args.shift()!;
 
   switch (action) {
-    // ---- Coordination ----
-    case 'join': {
-      const channel = extractFlag(args, 'channel');
-      const create = extractFlagBool(args, 'create');
-      await postAction(
-        buildAction({ action: 'join', channel: channel || undefined, create: create || undefined })
-      );
-      break;
-    }
     case 'status': {
       await postAction(buildAction({ action: 'status' }));
       break;
@@ -630,197 +577,8 @@ Environment:
       await postAction(buildAction({ action: 'list' }));
       break;
     }
-    case 'whois': {
-      const name = args[0];
-      if (!name) {
-        process.stderr.write('Error: whois requires a name.\n');
-        process.exit(1);
-      }
-      await postAction(buildAction({ action: 'whois', name }));
-      break;
-    }
-    case 'feed': {
-      const limit = extractFlag(args, 'limit');
-      const channel = extractFlag(args, 'channel');
-      await postAction(
-        buildAction({ action: 'feed', limit: limit ? Number(limit) : undefined, channel })
-      );
-      break;
-    }
-    case 'send': {
-      const to = args[0];
-      const message = args.slice(1).join(' ');
-      if (!to || !message) {
-        process.stderr.write('Error: send requires <to> <message>.\n');
-        process.exit(1);
-      }
-      await postAction(buildAction({ action: 'send', to, message }));
-      break;
-    }
     case 'swarm': {
-      const channel = extractFlag(args, 'channel');
-      await postAction(buildAction({ action: 'swarm', channel }));
-      break;
-    }
-    case 'reserve': {
-      const reason = extractFlag(args, 'reason');
-      const paths = args.filter((a) => !a.startsWith('--'));
-      if (paths.length === 0) {
-        process.stderr.write('Error: reserve requires one or more paths.\n');
-        process.exit(1);
-      }
-      await postAction(buildAction({ action: 'reserve', paths, reason }));
-      break;
-    }
-    case 'release': {
-      const paths = args.filter((a) => !a.startsWith('--'));
-      await postAction(
-        buildAction({ action: 'release', paths: paths.length > 0 ? paths : undefined })
-      );
-      break;
-    }
-    case 'set-status': {
-      const message = args.join(' ');
-      if (!message) {
-        process.stderr.write('Error: set-status requires a message.\n');
-        process.exit(1);
-      }
-      await postAction(buildAction({ action: 'set_status', message }));
-      break;
-    }
-    case 'channels': {
-      const showAll = extractFlagBool(args, 'all');
-      await postAction(buildAction({ action: 'channels', showAll: showAll || undefined }));
-      break;
-    }
-
-    case 'rename': {
-      const name = args[0];
-      if (!name) {
-        process.stderr.write('Error: rename requires a name.\n');
-        process.exit(1);
-      }
-      await postAction(buildAction({ action: 'rename', name }));
-      break;
-    }
-
-    // ---- Tasks ----
-    case 'task': {
-      const sub = args.shift();
-      switch (sub) {
-        case 'list': {
-          await postAction(buildAction({ action: 'task.list' }));
-          break;
-        }
-        case 'ready': {
-          await postAction(buildAction({ action: 'task.ready' }));
-          break;
-        }
-        case 'show': {
-          const id = args[0];
-          if (!id) {
-            process.stderr.write('Error: task show requires an id.\n');
-            process.exit(1);
-          }
-          await postAction(buildAction({ action: 'task.show', id }));
-          break;
-        }
-        case 'create': {
-          const title = extractFlag(args, 'title');
-          const content = extractFlag(args, 'content');
-          const dependsOn = extractFlag(args, 'depends-on');
-          if (!title) {
-            process.stderr.write('Error: task create requires --title.\n');
-            process.exit(1);
-          }
-          await postAction(
-            buildAction({
-              action: 'task.create',
-              title,
-              content: content || undefined,
-              dependsOn: dependsOn ? [dependsOn] : undefined,
-            })
-          );
-          break;
-        }
-        case 'claim': {
-          const id = args[0];
-          if (!id) {
-            process.stderr.write('Error: task claim requires an id.\n');
-            process.exit(1);
-          }
-          await postAction(buildAction({ action: 'task.claim', id }));
-          break;
-        }
-        case 'unclaim': {
-          const id = args[0];
-          if (!id) {
-            process.stderr.write('Error: task unclaim requires an id.\n');
-            process.exit(1);
-          }
-          await postAction(buildAction({ action: 'task.unclaim', id }));
-          break;
-        }
-        case 'progress': {
-          const id = args[0];
-          const message = args.slice(1).join(' ');
-          if (!id || !message) {
-            process.stderr.write('Error: task progress requires <id> <message>.\n');
-            process.exit(1);
-          }
-          await postAction(buildAction({ action: 'task.progress', id, message }));
-          break;
-        }
-        case 'done': {
-          const id = args[0];
-          const summary = args.slice(1).join(' ');
-          if (!id || !summary) {
-            process.stderr.write('Error: task done requires <id> <summary>.\n');
-            process.exit(1);
-          }
-          await postAction(buildAction({ action: 'task.done', id, summary }));
-          break;
-        }
-        case 'block': {
-          const id = args[0];
-          const reason = extractFlag(args, 'reason') || args.slice(1).join(' ');
-          if (!id) {
-            process.stderr.write('Error: task block requires an id.\n');
-            process.exit(1);
-          }
-          await postAction(buildAction({ action: 'task.block', id, reason }));
-          break;
-        }
-        case 'unblock': {
-          const id = args[0];
-          if (!id) {
-            process.stderr.write('Error: task unblock requires an id.\n');
-            process.exit(1);
-          }
-          await postAction(buildAction({ action: 'task.unblock', id }));
-          break;
-        }
-        case 'reset': {
-          const id = args[0];
-          const cascade = extractFlagBool(args, 'cascade');
-          if (!id) {
-            process.stderr.write('Error: task reset requires an id.\n');
-            process.exit(1);
-          }
-          await postAction(
-            buildAction({ action: 'task.reset', id, cascade: cascade || undefined })
-          );
-          break;
-        }
-        case 'archive-done': {
-          await postAction(buildAction({ action: 'task.archive_done' }));
-          break;
-        }
-        default: {
-          process.stderr.write(`Unknown task subcommand: ${sub}\n`);
-          process.exit(1);
-        }
-      }
+      await postAction(buildAction({ action: 'swarm' }));
       break;
     }
 
@@ -839,17 +597,15 @@ Environment:
         }
         await postAction(buildAction({ action: 'spawn.stop', id }));
       } else {
-        // spawn --role Role "mission text" [--task-id task-1] [--persona "..."] [--name name]
-        //      [--agent-file path] [--objective "..."] [--context "..."] [--message-file path] [--force]
+        // spawn --role Role "mission text" [--persona "..."] [--name name]
+        //      [--agent-file path] [--objective "..."] [--context "..."] [--message-file path]
         const role = extractFlag(args, 'role') || extractFlag(args, 'title');
         const persona = extractFlag(args, 'persona');
-        const taskId = extractFlag(args, 'task-id');
         const name = extractFlag(args, 'name');
         const agentFile = extractFlag(args, 'agent-file');
         const objective = extractFlag(args, 'objective');
         const context = extractFlag(args, 'context');
         const messageFile = extractFlag(args, 'message-file');
-        const force = extractFlagBool(args, 'force');
 
         // --message-file takes priority: read mission text from a file to avoid
         // shell interpolation of backticks, ${...}, and parentheses in the prompt.
@@ -877,14 +633,12 @@ Environment:
             action: 'spawn',
             role: role || undefined,
             persona: persona || undefined,
-            taskId: taskId || undefined,
             name: name || undefined,
             agentFile: agentFile || undefined,
             messageFile: messageFile || undefined,
             objective: objective || undefined,
             context: context || undefined,
             message: message || undefined,
-            force: force || undefined,
           })
         );
       }
@@ -892,27 +646,16 @@ Environment:
     }
 
     default: {
-      // Check if it's key=value shorthand (backward compat)
-      if (rawArgs[0].includes('=')) {
-        const params: Record<string, string> = {};
-        for (const arg of rawArgs) {
-          const eq = arg.indexOf('=');
-          if (eq > 0) {
-            params[arg.slice(0, eq)] = arg.slice(eq + 1);
-          } else if (!params.action) {
-            params.action = arg;
-          }
-        }
-        await postAction(JSON.stringify(params));
-      } else {
-        process.stderr.write(`Unknown command: ${action}. Use --help for usage.\n`);
-        process.exit(1);
-      }
+      process.stderr.write(
+        `Unknown command: ${action}. Use --help for usage.\n` +
+          'Removed commands: join, feed, send, reserve, release, channels, whois, set-status, rename, task.\n'
+      );
+      process.exit(1);
     }
   }
 }
 
 main().catch((err) => {
-  process.stderr.write(`pi-messenger-swarm: ${err instanceof Error ? err.message : err}\n`);
+  process.stderr.write(`pi-ultra-messenger: ${err instanceof Error ? err.message : err}\n`);
   process.exit(1);
 });

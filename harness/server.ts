@@ -119,10 +119,6 @@ function configForCwd(cwd: string): MessengerConfig {
 function routerConfigForCwd(cwd: string): RouterConfig {
   const config = configForCwd(cwd);
   return {
-    stuckThreshold: config.stuckThreshold,
-    swarmEventsInFeed: config.swarmEventsInFeed,
-    nameTheme: { theme: config.nameTheme, customWords: config.nameWords },
-    feedRetention: config.feedRetention,
     maxConcurrentSpawns: config.maxConcurrentSpawns,
   };
 }

@@ -354,7 +354,6 @@ export function renderSwarmDetail(
     const exit = typeof agent.exitCode === 'number' ? `  │  Exit: ${agent.exitCode}` : '';
     lines.push(`Ended: ${formatRelativeTime(agent.endedAt)}${exit}`);
   }
-  if (agent.taskId) lines.push(`Task: ${agent.taskId}`);
 
   if (agent.context?.trim()) {
     lines.push('', 'Context:');

@@ -8,11 +8,11 @@ export interface MessengerActionParams {
   // Action
   action?: string;
 
-  // Task IDs
+  // Spawn stop target
   id?: string;
   taskId?: string;
 
-  // Task creation & lifecycle
+  // Task creation & lifecycle (legacy — task handlers are preserved but unreachable)
   title?: string;
   content?: string;
   dependsOn?: string[];
@@ -25,7 +25,7 @@ export interface MessengerActionParams {
   message?: string;
   reason?: string;
 
-  // Coordination
+  // Coordination (legacy — handlers preserved but unreachable)
   to?: string | string[];
   replyTo?: string;
   paths?: string[];
@@ -34,9 +34,9 @@ export interface MessengerActionParams {
   create?: boolean;
   limit?: number;
   autoRegisterPath?: 'add' | 'remove' | 'list';
-  spec?: string; // Spec file path for join action
+  spec?: string;
 
-  // Channels
+  // Channels (legacy)
   showAll?: boolean;
 
   // Spawn
@@ -44,7 +44,6 @@ export interface MessengerActionParams {
   persona?: string;
   objective?: string;
   context?: string;
-  model?: string;
   agentFile?: string;
   messageFile?: string;
   force?: boolean;

@@ -1,10 +1,8 @@
 import * as fs from 'node:fs';
 import type { MessengerActionParams } from '../../action-types.js';
 import type { MessengerState } from '../../lib.js';
-import { displayChannelLabel, normalizeChannelId } from '../../channel.js';
 import { result } from '../result.js';
 import { logFeedEvent } from '../../feed/index.js';
-import * as taskStore from '../task-store.js';
 import {
   cleanupExitedSpawned,
   getRunningSpawnCount,
@@ -64,7 +62,7 @@ function spawnList(cwd: string, sessionId: string) {
     '# Running Spawned Agents',
     '',
     ...items.map((agent) => {
-      const tail = agent.taskId ? ` → ${agent.taskId}` : '';
+      const tail = '';
       return `- ${agent.id}: ${agent.name} (${formatRoleLabel(agent.role)}) · ${agent.status}${tail}`;
     }),
     '',
@@ -93,7 +91,7 @@ function spawnHistory(cwd: string, sessionId: string) {
   if (running.length > 0) {
     lines.push('## Running');
     for (const agent of running.slice(0, 8)) {
-      const tail = agent.taskId ? ` → ${agent.taskId}` : '';
+      const tail = '';
       lines.push(`- ${agent.id}: ${agent.name} (${formatRoleLabel(agent.role)})${tail}`);
     }
     lines.push('');
@@ -103,7 +101,7 @@ function spawnHistory(cwd: string, sessionId: string) {
     lines.push(`## Completed (${completed.length})`);
     for (const agent of completed.slice(0, 10)) {
       const ended = agent.endedAt ? ` · ended ${new Date(agent.endedAt).toLocaleTimeString()}` : '';
-      const tail = agent.taskId ? ` → ${agent.taskId}` : '';
+      const tail = '';
       lines.push(`- ${agent.id}: ${agent.name} (${formatRoleLabel(agent.role)})${tail}${ended}`);
     }
     if (completed.length > 10) {
@@ -116,7 +114,7 @@ function spawnHistory(cwd: string, sessionId: string) {
     lines.push(`## Failed (${failed.length})`);
     for (const agent of failed.slice(0, 5)) {
       const ended = agent.endedAt ? ` · ended ${new Date(agent.endedAt).toLocaleTimeString()}` : '';
-      const tail = agent.taskId ? ` → ${agent.taskId}` : '';
+      const tail = '';
       lines.push(`- ${agent.id}: ${agent.name} (${formatRoleLabel(agent.role)})${tail}${ended}`);
     }
     lines.push('');
@@ -126,7 +124,7 @@ function spawnHistory(cwd: string, sessionId: string) {
     lines.push(`## Stopped (${stopped.length})`);
     for (const agent of stopped.slice(0, 5)) {
       const ended = agent.endedAt ? ` · ended ${new Date(agent.endedAt).toLocaleTimeString()}` : '';
-      const tail = agent.taskId ? ` → ${agent.taskId}` : '';
+      const tail = '';
       lines.push(`- ${agent.id}: ${agent.name} (${formatRoleLabel(agent.role)})${tail}${ended}`);
     }
     lines.push('');
@@ -175,29 +173,8 @@ function spawnCreate(
   sessionId: string,
   maxConcurrentSpawns?: number
 ) {
-  // Guardrail: if the user has ready tasks but forgot --task-id, warn them
-  // instead of letting an unbound agent float and accidentally claim/create
-  // tasks that collide with the coordinator's intent.
-  if (!params.taskId && !params.force) {
-    const ready = taskStore.getReadyTasks(cwd, sessionId);
-    if (ready.length > 0) {
-      const list = ready.map((t) => `  ${t.id}: ${t.title}`).join('\n');
-      return result(
-        `⚠️  You have ${ready.length} ready task${ready.length === 1 ? '' : 's'} waiting to be claimed.\n${list}\n\n` +
-          `Use --task-id to bind this spawn to a specific task:\n` +
-          `  pi-messenger-swarm spawn --task-id ${ready[0].id} --role "${params.role ?? 'Subagent'}" "..."\n\n` +
-          `This prevents the parent agent from accidentally owning work meant for the subagent.`,
-        {
-          mode: 'spawn',
-          error: 'missing_task_id',
-          readyTasks: ready.map((t) => ({ id: t.id, title: t.title })),
-        }
-      );
-    }
-  }
-
   // Enforce concurrency limit to prevent thundering-herd API failures.
-  // When more subagents run than the provider supports concurrently,
+  // When more workers run than the provider supports concurrently,
   // excess agents hit rate limits and spin on retries — wasting tokens
   // and making the whole swarm appear stuck.
   const running = getRunningSpawnCount(cwd);
@@ -237,7 +214,6 @@ function spawnCreate(
       objective: params.objective,
       message,
       context: params.context,
-      taskId: params.taskId,
       name: params.name,
     };
 
@@ -274,13 +250,12 @@ function spawnCreate(
     });
   }
 
-  const role = params.role?.trim() || params.title?.trim() || 'Subagent';
+  const role = params.role?.trim() || 'Subagent';
   const request: SpawnRequest = {
     role,
     persona: params.persona,
     objective,
     context: params.context,
-    taskId: params.taskId,
     name: params.name,
   };
 

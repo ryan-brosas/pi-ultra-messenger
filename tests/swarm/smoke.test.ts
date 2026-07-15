@@ -9,7 +9,7 @@ import { createMockContext } from '../helpers/mock-context.js';
 const roots = new Set<string>();
 
 function createTempCwd(): string {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-messenger-swarm-smoke-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-ultra-messenger-smoke-'));
   roots.add(cwd);
   return cwd;
 }
@@ -25,10 +25,6 @@ function createState(agentName: string): MessengerState {
   return {
     agentName,
     registered: true,
-    watcher: null,
-    watcherRetries: 0,
-    watcherRetryTimer: null,
-    watcherDebounceTimer: null,
     reservations: [],
     chatHistory: new Map(),
     unreadCounts: new Map(),
@@ -53,81 +49,49 @@ function createState(agentName: string): MessengerState {
 
 afterEach(() => {
   for (const root of roots) {
-    try {
-      fs.rmSync(root, { recursive: true, force: true });
-    } catch {}
+    fs.rmSync(root, { recursive: true, force: true });
   }
   roots.clear();
 });
 
-describe('swarm smoke', () => {
-  it('supports peer-created and peer-claimed task flow', async () => {
+describe('pi-ultra-messenger smoke', () => {
+  it('rejects removed task routes', async () => {
     const cwd = createTempCwd();
     const dirs = createDirs(cwd);
     const ctx = createMockContext(cwd);
+    const state = createState('Alpha');
 
-    const alpha = createState('Alpha');
-    const beta = createState('Beta');
+    for (const action of ['task.create', 'task.claim', 'task.done', 'task.list']) {
+      const res = await executeAction(
+        action,
+        action === 'task.create' ? { title: 'test' } : action === 'task.claim' || action === 'task.done' ? { id: 'task-1' } : {},
+        state,
+        dirs,
+        ctx,
+        () => {},
+        () => {},
+        () => {}
+      );
+      expect(res.content[0]?.text).toContain('Unknown or removed action');
+    }
+  });
 
-    const created = await executeAction(
-      'task.create',
-      { title: 'Smoke task', content: 'End-to-end' },
-      alpha,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    expect(created.content[0]?.text).toContain('task-1');
+  it('still supports spawn list and swarm status', async () => {
+    const cwd = createTempCwd();
+    const dirs = createDirs(cwd);
+    const ctx = createMockContext(cwd);
+    const state = createState('Alpha');
 
-    const alphaClaim = await executeAction(
-      'task.claim',
-      { id: 'task-1' },
-      alpha,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    expect(alphaClaim.content[0]?.text).toContain('Claimed task-1');
-
-    const betaClaim = await executeAction(
-      'task.claim',
-      { id: 'task-1' },
-      beta,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    expect(betaClaim.content[0]?.text).toContain('already claimed');
-
-    const done = await executeAction(
-      'task.done',
-      { id: 'task-1', summary: 'completed by alpha' },
-      alpha,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    expect(done.content[0]?.text).toContain('Completed task-1');
-
-    const swarm = await executeAction(
-      'swarm',
+    const list = await executeAction(
+      'spawn.list',
       {},
-      alpha,
+      state,
       dirs,
       ctx,
       () => {},
       () => {},
       () => {}
     );
-    expect(swarm.content[0]?.text).toContain('Summary');
-    expect(swarm.content[0]?.text).toContain('1/1 done');
+    expect(list.content[0]?.text).toContain('No spawned agents');
   });
 });

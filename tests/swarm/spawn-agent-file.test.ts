@@ -86,7 +86,7 @@ describe('swarm spawn with agentFile', () => {
 
     // File content is used as system prompt with protocol appended
     expect(content).toContain('You are a security expert. Be thorough.');
-    expect(content).toContain('## Swarm Operating Protocol');
+    expect(content).toContain('## Worker Operating Protocol');
 
     proc.emit('close', 0);
   });
@@ -160,7 +160,7 @@ describe('swarm spawn with agentFile', () => {
     const content = fs.readFileSync(promptPath, 'utf-8');
 
     expect(content).toContain('Custom agent content');
-    expect(content).toContain('## Swarm Operating Protocol');
+    expect(content).toContain('## Worker Operating Protocol');
 
     proc.emit('close', 0);
   });

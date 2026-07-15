@@ -157,7 +157,7 @@ export default function piMessengerExtension(pi: ExtensionAPI) {
     pi.sendMessage(
       {
         customType: 'messenger_context',
-        content: `You are agent "${state.agentName}" in ${locationPart}. Your current channel is ${displayChannelLabel(state.currentChannel)}. Named channel ${displayChannelLabel('memory')} exists for durable cross-session notes. Use pi-messenger-swarm for all coordination. Key: when you spawn agents for tasks, delegate the work — do NOT claim those tasks yourself (spawned agents claim and execute them). Only claim tasks you will implement personally. Read agent output with task show (feed shows only previews). Examples: pi-messenger-swarm join | pi-messenger-swarm swarm | pi-messenger-swarm task create --title "..." | pi-messenger-swarm spawn --task-id task-1 --role Debugger "Fix X" | pi-messenger-swarm task show task-1 | pi-messenger-swarm send AgentName "hello" | pi-messenger-swarm feed --limit 20. See SKILL for full reference.`,
+        content: `You are agent "${state.agentName}" in ${locationPart}. Use pi-ultra-messenger for spawn/status/list. Workers coordinate through MCP Agent Mail and follow the target project's AGENTS.md. Examples: pi-ultra-messenger swarm | pi-ultra-messenger spawn --role Researcher "Analyze X" | pi-ultra-messenger spawn list. Task/feed/send/reserve commands have been removed — use MCP Agent Mail for coordination. See SKILL for full reference.`,
         display: false,
       },
       { triggerTurn: false }

@@ -9,7 +9,7 @@ import { createMockContext } from '../helpers/mock-context.js';
 const roots = new Set<string>();
 
 function createTempCwd(): string {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-messenger-swarm-router-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-ultra-messenger-router-'));
   roots.add(cwd);
   return cwd;
 }
@@ -25,17 +25,13 @@ function createState(agentName: string): MessengerState {
   return {
     agentName,
     registered: true,
-    watcher: null,
-    watcherRetries: 0,
-    watcherRetryTimer: null,
-    watcherDebounceTimer: null,
     reservations: [],
     chatHistory: new Map(),
     unreadCounts: new Map(),
     channelPostHistory: [],
     seenSenders: new Map(),
-    model: 'test-model',
-    gitBranch: 'main',
+    model: '',
+    gitBranch: undefined,
     spec: undefined,
     scopeToFolder: false,
     isHuman: false,
@@ -45,253 +41,127 @@ function createState(agentName: string): MessengerState {
     customStatus: false,
     registryFlushTimer: null,
     sessionStartedAt: new Date().toISOString(),
-    currentChannel: 'test-channel',
-    sessionChannel: 'test-channel',
-    joinedChannels: ['test-channel', 'memory'],
+    contextSessionId: undefined,
+    currentChannel: '',
+    sessionChannel: '',
+    joinedChannels: [],
   } as MessengerState;
 }
 
 afterEach(() => {
   for (const root of roots) {
-    try {
-      fs.rmSync(root, { recursive: true, force: true });
-    } catch {}
+    fs.rmSync(root, { recursive: true, force: true });
   }
   roots.clear();
 });
 
-describe('swarm router', () => {
-  it('supports task create/claim/done end-to-end', async () => {
+async function callRouter(
+  action: string,
+  params: Record<string, unknown>,
+  cwd: string,
+  dirs: Dirs,
+  state: MessengerState
+) {
+  return executeAction(
+    action,
+    params,
+    state,
+    dirs,
+    createMockContext(cwd),
+    () => {},
+    () => {},
+    () => {}
+  );
+}
+
+describe('pi-ultra-messenger router', () => {
+  it('rejects task.create as removed', async () => {
     const cwd = createTempCwd();
     const dirs = createDirs(cwd);
     const state = createState('AgentOne');
-    const ctx = createMockContext(cwd);
 
-    const created = await executeAction(
-      'task.create',
-      { title: 'Fix login timeout', content: 'Adjust session keepalive' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-
-    expect(created.content[0]?.text).toContain('Created task-1');
-
-    const claimed = await executeAction(
-      'task.claim',
-      { id: 'task-1' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-
-    expect(claimed.content[0]?.text).toContain('Claimed task-1');
-
-    const done = await executeAction(
-      'task.done',
-      { id: 'task-1', summary: 'Added keepalive and tests' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-
-    expect(done.content[0]?.text).toContain('Completed task-1');
+    const res = await callRouter('task.create', { title: 'Fix login' }, cwd, dirs, state);
+    expect(res.content[0]?.text).toContain('Unknown or removed action');
+    expect(res.content[0]?.text).toContain('task');
   });
 
-  it('supports claim/unclaim/complete aliases', async () => {
+  it('rejects task.claim as removed', async () => {
+    const cwd = createTempCwd();
+    const dirs = createDirs(cwd);
+    const state = createState('AgentOne');
+
+    const res = await callRouter('task.claim', { id: 'task-1' }, cwd, dirs, state);
+    expect(res.content[0]?.text).toContain('Unknown or removed action');
+  });
+
+  it('rejects claim alias as removed', async () => {
     const cwd = createTempCwd();
     const dirs = createDirs(cwd);
     const state = createState('AgentAlias');
-    const ctx = createMockContext(cwd);
 
-    await executeAction(
-      'task.create',
-      { title: 'Alias task' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-
-    const claim = await executeAction(
-      'claim',
-      { taskId: 'task-1' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    expect(claim.content[0]?.text).toContain('Claimed task-1');
-
-    const unclaim = await executeAction(
-      'unclaim',
-      { taskId: 'task-1' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    expect(unclaim.content[0]?.text).toContain('Released claim');
-
-    await executeAction(
-      'claim',
-      { taskId: 'task-1' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    const complete = await executeAction(
-      'complete',
-      { taskId: 'task-1', summary: 'done' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    expect(complete.content[0]?.text).toContain('Completed task-1');
+    const res = await callRouter('claim', { taskId: 'task-1' }, cwd, dirs, state);
+    expect(res.content[0]?.text).toContain('Unknown or removed action');
   });
 
-  it('returns swarm board summary', async () => {
+  it('rejects send as removed', async () => {
     const cwd = createTempCwd();
     const dirs = createDirs(cwd);
-    const state = createState('AgentSwarm');
-    const ctx = createMockContext(cwd);
+    const state = createState('AgentSend');
 
-    await executeAction(
-      'task.create',
-      { title: 'One' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    const swarm = await executeAction(
-      'swarm',
-      {},
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-
-    expect(swarm.content[0]?.text).toContain('# Agent Swarm');
-    expect(swarm.content[0]?.text).toContain('task-1');
+    const res = await callRouter('send', { to: 'AgentB', message: 'hello' }, cwd, dirs, state);
+    expect(res.content[0]?.text).toContain('Unknown or removed action');
+    expect(res.content[0]?.text).toContain('send');
   });
 
-  it('archives completed tasks with task.archive_done', async () => {
+  it('rejects feed as removed', async () => {
     const cwd = createTempCwd();
     const dirs = createDirs(cwd);
-    const state = createState('AgentArchive');
-    const ctx = createMockContext(cwd);
+    const state = createState('AgentFeed');
 
-    await executeAction(
-      'task.create',
-      { title: 'Archive me' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    await executeAction(
-      'task.claim',
-      { id: 'task-1' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    await executeAction(
-      'task.done',
-      { id: 'task-1', summary: 'done' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
+    const res = await callRouter('feed', { limit: 10 }, cwd, dirs, state);
+    expect(res.content[0]?.text).toContain('Unknown or removed action');
+    expect(res.content[0]?.text).toContain('feed');
+  });
 
-    const archive = await executeAction(
-      'task.archive_done',
-      {},
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    expect(archive.content[0]?.text).toContain('Archived 1 done task');
+  it('rejects reserve as removed', async () => {
+    const cwd = createTempCwd();
+    const dirs = createDirs(cwd);
+    const state = createState('AgentReserve');
 
-    const listed = await executeAction(
-      'task.list',
-      {},
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    expect(listed.content[0]?.text).toContain('No tasks yet');
+    const res = await callRouter('reserve', { paths: ['src/'] }, cwd, dirs, state);
+    expect(res.content[0]?.text).toContain('Unknown or removed action');
+    expect(res.content[0]?.text).toContain('reserve');
+  });
 
-    const none = await executeAction(
-      'task.archive_done',
-      {},
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    expect(none.content[0]?.text).toContain('No done tasks to archive');
+  it('rejects join as removed', async () => {
+    const cwd = createTempCwd();
+    const dirs = createDirs(cwd);
+    const state = createState('AgentJoin');
+
+    const res = await callRouter('join', {}, cwd, dirs, state);
+    expect(res.content[0]?.text).toContain('Unknown or removed action');
+    expect(res.content[0]?.text).toContain('join');
+  });
+
+  it('rejects unknown legacy actions', async () => {
+    const cwd = createTempCwd();
+    const dirs = createDirs(cwd);
+    const state = createState('AgentLegacy');
+
+    const actions = ['plan', 'work', 'review', 'crew.status'];
+
+    for (const action of actions) {
+      const res = await callRouter(action, {}, cwd, dirs, state);
+      expect(res.content[0]?.text).toContain('Unknown or removed action');
+    }
   });
 
   it('rejects spawn without objective text', async () => {
     const cwd = createTempCwd();
     const dirs = createDirs(cwd);
     const state = createState('AgentSpawn');
-    const ctx = createMockContext(cwd);
 
-    const res = await executeAction(
-      'spawn',
-      { role: 'Researcher' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
+    const res = await callRouter('spawn', { role: 'Researcher' }, cwd, dirs, state);
     expect(res.content[0]?.text).toContain('spawn requires mission text');
   });
 
@@ -299,73 +169,8 @@ describe('swarm router', () => {
     const cwd = createTempCwd();
     const dirs = createDirs(cwd);
     const state = createState('AgentSpawn');
-    const ctx = createMockContext(cwd);
 
-    const res = await executeAction(
-      'spawn.list',
-      {},
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
+    const res = await callRouter('spawn.list', {}, cwd, dirs, state);
     expect(res.content[0]?.text).toContain('No spawned agents');
-  });
-
-  it('requires explicit send targets and rejects broadcast', async () => {
-    const cwd = createTempCwd();
-    const dirs = createDirs(cwd);
-    const state = createState('AgentSend');
-    const ctx = createMockContext(cwd);
-
-    const missingTo = await executeAction(
-      'send',
-      { message: 'hello' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    expect(missingTo.content[0]?.text).toContain("send requires 'to'");
-
-    const broadcast = await executeAction(
-      'broadcast',
-      { message: 'hello' },
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-    expect(broadcast.content[0]?.text).toContain('Action "broadcast" was removed');
-    expect(broadcast.content[0]?.text).toContain('pi-messenger-swarm send #channel');
-  });
-
-  it('rejects unknown legacy actions', async () => {
-    const cwd = createTempCwd();
-    const dirs = createDirs(cwd);
-    const state = createState('AgentLegacy');
-    const ctx = createMockContext(cwd);
-
-    const actions = ['plan', 'work', 'review', 'crew.status'];
-
-    for (const action of actions) {
-      const res = await executeAction(
-        action,
-        {},
-        state,
-        dirs,
-        ctx,
-        () => {},
-        () => {},
-        vi.fn()
-      );
-      expect(res.content[0]?.text).toContain('Unknown action');
-    }
   });
 });

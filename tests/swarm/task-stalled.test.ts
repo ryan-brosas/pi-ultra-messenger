@@ -155,15 +155,12 @@ describe('swarm/task-store getStalledTasks', () => {
   });
 });
 
-describe('swarm/router task.stalled', () => {
-  it('returns no stalled tasks when all are recent', async () => {
+describe('router rejects removed task.stalled route', () => {
+  it('rejects task.stalled as removed', async () => {
     const cwd = createTempCwd();
     const dirs = createDirs(cwd);
     const state = createState('AgentStalled');
     const ctx = createMockContext(cwd);
-
-    const task = taskStore.createTask(cwd, TEST_SESSION, { title: 'Active task' }, TEST_CHANNEL);
-    taskStore.claimTask(cwd, TEST_SESSION, task.id, 'AgentA');
 
     const res = await executeAction(
       'task.stalled',
@@ -176,90 +173,7 @@ describe('swarm/router task.stalled', () => {
       () => {}
     );
 
-    expect(res.content[0]?.text).toContain('No stalled tasks');
-  });
-
-  it('lists stalled tasks with age and options', async () => {
-    const cwd = createTempCwd();
-    const dirs = createDirs(cwd);
-    const state = createState('AgentStalled');
-    const ctx = createMockContext(cwd);
-
-    const task = taskStore.createTask(cwd, TEST_SESSION, { title: 'Old task' }, TEST_CHANNEL);
-    taskStore.claimTask(cwd, TEST_SESSION, task.id, 'AgentA');
-
-    // Use 0ms threshold via store directly to force stalling, but
-    // the handler uses the default 10min — claim just happened so it
-    // won't be stalled yet via handler. Instead, verify the handler
-    // plumbs through correctly by checking format when we force-stall.
-    // We backdate the claim by writing events directly.
-    const jsonlPath = path.join(cwd, '.pi', 'messenger', 'tasks', `${TEST_SESSION}.jsonl`);
-    const lines = fs.readFileSync(jsonlPath, 'utf-8').trim().split('\n');
-    const events = lines.map((l) => JSON.parse(l));
-    // Replace the claimed event timestamp with one 15 minutes ago
-    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-    for (const event of events) {
-      if (event.type === 'claimed') {
-        event.timestamp = fifteenMinutesAgo;
-      }
-    }
-    fs.writeFileSync(jsonlPath, events.map((e) => JSON.stringify(e)).join('\n'));
-
-    const res = await executeAction(
-      'task.stalled',
-      {},
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-
-    const text = res.content[0]?.text ?? '';
-    expect(text).toContain('# Stalled Tasks');
-    expect(text).toContain('⏳');
-    expect(text).toContain(task.id);
-    expect(text).toContain('AgentA');
-    expect(text).toContain('since last activity');
-    expect(text).toContain('pi-messenger-swarm send');
-    expect(text).toContain('pi-messenger-swarm task reset');
-  });
-
-  it('includes stalled metadata in result', async () => {
-    const cwd = createTempCwd();
-    const dirs = createDirs(cwd);
-    const state = createState('AgentStalled');
-    const ctx = createMockContext(cwd);
-
-    const task = taskStore.createTask(cwd, TEST_SESSION, { title: 'Stalled task' }, TEST_CHANNEL);
-    taskStore.claimTask(cwd, TEST_SESSION, task.id, 'AgentA');
-
-    // Backdate the claim
-    const jsonlPath = path.join(cwd, '.pi', 'messenger', 'tasks', `${TEST_SESSION}.jsonl`);
-    const lines = fs.readFileSync(jsonlPath, 'utf-8').trim().split('\n');
-    const events = lines.map((l) => JSON.parse(l));
-    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-    for (const event of events) {
-      if (event.type === 'claimed') {
-        event.timestamp = fifteenMinutesAgo;
-      }
-    }
-    fs.writeFileSync(jsonlPath, events.map((e) => JSON.stringify(e)).join('\n'));
-
-    const res = await executeAction(
-      'task.stalled',
-      {},
-      state,
-      dirs,
-      ctx,
-      () => {},
-      () => {},
-      () => {}
-    );
-
-    expect(res.details?.mode).toBe('task.stalled');
-    expect(res.details?.stalled).toHaveLength(1);
-    expect(res.details?.stalled[0].id).toBe(task.id);
+    expect(res.content[0]?.text).toContain('Unknown or removed action');
+    expect(res.content[0]?.text).toContain('task');
   });
 });

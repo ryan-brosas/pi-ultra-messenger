@@ -206,7 +206,6 @@ export function renderSwarmList(
     const agent = agents[i];
     const select = i === viewState.selectedSwarmIndex ? theme.fg('accent', '▸ ') : '  ';
     const tailParts: string[] = [formatRoleLabel(agent.role), agent.status];
-    if (agent.taskId) tailParts.push(`→ ${agent.taskId}`);
     lines.push(
       truncateToWidth(
         `${select}${statusIcon(agent.status)} ${agent.name}  ${theme.fg('dim', tailParts.join(' · '))}`,

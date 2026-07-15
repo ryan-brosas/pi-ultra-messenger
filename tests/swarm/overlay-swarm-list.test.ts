@@ -79,7 +79,7 @@ describe('overlay swarm list view', () => {
         status: 'running',
         startedAt: new Date().toISOString(),
         systemPrompt:
-          '# Swarm Subagent Role\n\n## Role Description\nYou are a specialized researcher.',
+          '# Worker Role\n\n## Role Description\nYou are a specialized researcher.',
       },
       120,
       40,
@@ -88,7 +88,7 @@ describe('overlay swarm list view', () => {
 
     const joined = lines.join('\n');
     expect(joined).toContain('System Prompt:');
-    expect(joined).toContain('# Swarm Subagent Role');
+    expect(joined).toContain('# Worker Role');
     expect(joined).toContain('## Role Description');
     expect(joined).toContain('You are a specialized researcher.');
   });

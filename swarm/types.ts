@@ -51,7 +51,6 @@ export interface SpawnRequest {
   objective?: string;
   message?: string; // Alias for objective
   context?: string;
-  taskId?: string;
   name?: string;
   agentFile?: string; // Path to markdown file (with YAML frontmatter) to use as system prompt
 }
@@ -65,7 +64,6 @@ export interface SpawnedAgent {
   persona?: string;
   objective: string;
   context?: string;
-  taskId?: string;
   systemPrompt?: string;
   status: 'running' | 'completed' | 'failed' | 'stopped';
   startedAt: string;
