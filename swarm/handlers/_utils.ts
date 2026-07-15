@@ -1,6 +1,8 @@
-import * as taskStore from '../task-store.js';
-
-export function summaryLine(cwd: string, sessionId: string): string {
-  const s = taskStore.getSummary(cwd, sessionId);
-  return `${s.done}/${s.total} done · ${s.in_progress} in progress · ${s.todo} todo · ${s.blocked} blocked`;
+/**
+ * Task summary helper — preserved for backward compatibility with
+ * unreachable task handler files. Returns a placeholder since the
+ * task store is no longer part of the product surface.
+ */
+export function summaryLine(_cwd: string, _sessionId: string): string {
+  return 'task operations removed';
 }

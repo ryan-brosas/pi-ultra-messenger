@@ -1,44 +1,33 @@
 import type { Dirs, MessengerState, AgentRegistration } from '../../lib.js';
 import {
   STATUS_INDICATORS,
-  agentHasTask,
-  buildSelfRegistration,
   computeStatus,
+  buildSelfRegistration,
   extractFolder,
 } from '../../lib.js';
-import { displayChannelLabel } from '../../channel.js';
 import * as store from '../../store.js';
-import * as taskStore from '../../swarm/task-store.js';
-import { getEffectiveSessionId } from '../../store/shared.js';
-import { formatFeedLine, readFeedEvents } from '../../feed/index.js';
 import { notRegisteredError, result } from '../result.js';
 
 export function executeList(
   state: MessengerState,
   dirs: Dirs,
   cwd: string,
-  config?: { stuckThreshold?: number }
+  _config?: { stuckThreshold?: number }
 ) {
   if (!state.registered) {
     return notRegisteredError();
   }
 
-  const thresholdMs = (config?.stuckThreshold ?? 900) * 1000;
   const peers = store.getActiveAgents(state, dirs);
   const folder = extractFolder(cwd);
   const totalCount = peers.length + 1;
 
-  const lines: string[] = [];
-  lines.push(`# Agents (${totalCount} online - project: ${folder})`, '');
-  lines.push(`Current channel: ${displayChannelLabel(state.currentChannel)}`);
-  lines.push(`Joined channels: ${state.joinedChannels.map(displayChannelLabel).join(', ')}`, '');
-
-  function formatAgentLine(a: AgentRegistration, isSelf: boolean, hasTask: boolean): string {
+  function formatAgentLine(a: AgentRegistration, isSelf: boolean): string {
     const computed = computeStatus(
       a.activity?.lastActivityAt ?? a.startedAt,
-      hasTask,
+      false,
       (a.reservations?.length ?? 0) > 0,
-      thresholdMs
+      900 * 1000
     );
     const indicator = STATUS_INDICATORS[computed.status];
     const nameLabel = isSelf ? `${a.name} (you)` : a.name;
@@ -49,63 +38,32 @@ export function executeList(
       parts.push(a.activity.currentActivity);
     } else if (computed.status === 'idle' && computed.idleFor) {
       parts.push(`idle ${computed.idleFor}`);
-    } else if (computed.status === 'away' && computed.idleFor) {
-      parts.push(`away ${computed.idleFor}`);
-    } else if (computed.status === 'stuck' && computed.idleFor) {
-      parts.push(`stuck ${computed.idleFor}`);
     }
 
-    parts.push(`${a.session?.toolCalls ?? 0} tools`);
+    const gitInfo = a.gitBranch ? ` (${a.gitBranch})` : '';
+    parts.push(a.model || 'unknown');
+    parts.push(`${a.pid}${gitInfo}`);
 
-    const tokens = a.session?.tokens ?? 0;
-    if (tokens >= 1000) {
-      parts.push(`${(tokens / 1000).toFixed(1)}k`);
-    } else {
-      parts.push(`${tokens}`);
-    }
+    if (a.statusMessage) parts.push(`— ${a.statusMessage}`);
 
-    const preferredChannel = a.currentChannel ?? a.sessionChannel;
-    if (preferredChannel) {
-      parts.push(displayChannelLabel(preferredChannel));
-    }
-
-    if (a.reservations && a.reservations.length > 0) {
-      const resParts = a.reservations.map((r) => r.pattern).join(', ');
-      parts.push(`📁 ${resParts}`);
-    }
-
-    if (a.statusMessage) {
-      parts.push(a.statusMessage);
-    }
-
-    return parts.join(' - ');
+    return parts.join('  ');
   }
 
-  const sessionId = getEffectiveSessionId(cwd, state);
-  const sessionTasks = taskStore.getTasks(cwd, sessionId);
+  const lines: string[] = [];
+  lines.push(`# Agents (${totalCount} online - project: ${folder})`, '');
 
-  lines.push(
-    formatAgentLine(buildSelfRegistration(state), true, agentHasTask(state.agentName, sessionTasks))
-  );
+  lines.push(formatAgentLine(buildSelfRegistration(state), true));
 
   for (const a of peers) {
-    lines.push(formatAgentLine(a, false, agentHasTask(a.name, sessionTasks)));
+    lines.push(formatAgentLine(a, false));
   }
 
-  const recentEvents = readFeedEvents(cwd, 5, state.currentChannel);
-  if (recentEvents.length > 0) {
-    lines.push('', `# Recent Activity ${displayChannelLabel(state.currentChannel)}`, '');
-    for (const event of recentEvents) {
-      lines.push(formatFeedLine(event));
-    }
-  }
+  lines.push('');
+  lines.push('Use `pi-ultra-messenger swarm` for worker pool status.');
 
   return result(lines.join('\n').trim(), {
     mode: 'list',
-    registered: true,
     agents: peers,
-    self: state.agentName,
     totalCount,
-    channel: state.currentChannel,
   });
 }
