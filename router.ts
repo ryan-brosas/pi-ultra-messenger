@@ -1,0 +1,232 @@
+/**
+ * Pi Messenger action router (swarm-first).
+ */
+
+import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
+import type { MessengerState, Dirs, AgentMailMessage, NameThemeConfig } from './lib.js';
+import * as handlers from './handlers.js';
+import type { MessengerActionParams } from './action-types.js';
+import { result } from './swarm/result.js';
+import { executeSpawn, executeSwarmStatus, executeTask } from './swarm/handlers.js';
+import { getEffectiveSessionId } from './store/shared.js';
+
+type DeliverFn = (msg: AgentMailMessage) => void;
+type UpdateStatusFn = (ctx: ExtensionContext) => void;
+
+export interface RouterConfig {
+  stuckThreshold?: number;
+  swarmEventsInFeed?: boolean;
+  nameTheme?: NameThemeConfig;
+  feedRetention?: number;
+  maxConcurrentSpawns?: number;
+}
+
+export async function executeAction(
+  action: string,
+  params: MessengerActionParams,
+  state: MessengerState,
+  dirs: Dirs,
+  ctx: ExtensionContext,
+  deliverMessage: DeliverFn,
+  updateStatus: UpdateStatusFn,
+  _appendEntry?: (type: string, data: unknown) => void,
+  config?: RouterConfig,
+  _signal?: AbortSignal
+) {
+  const dotIndex = action.indexOf('.');
+  const group = dotIndex > 0 ? action.slice(0, dotIndex) : action;
+  const op = dotIndex > 0 ? action.slice(dotIndex + 1) : null;
+  const cwd = ctx.cwd ?? process.cwd();
+  const sessionId = getEffectiveSessionId(cwd, state);
+
+  // Helper to get current channel or throw
+  function requireChannel(): string {
+    const channel = state.currentChannel ?? state.sessionChannel;
+    if (!channel) {
+      throw new Error('No current or session channel set');
+    }
+    return channel;
+  }
+
+  if (group === 'join') {
+    return handlers.executeJoin(
+      state,
+      dirs,
+      ctx,
+      deliverMessage,
+      updateStatus,
+      params.spec,
+      config?.nameTheme,
+      config?.feedRetention,
+      params.channel,
+      params.create
+    );
+  }
+
+  if (group === 'autoRegisterPath') {
+    if (!params.autoRegisterPath) {
+      return result("Error: autoRegisterPath requires value ('add', 'remove', or 'list').", {
+        mode: 'autoRegisterPath',
+        error: 'missing_value',
+      });
+    }
+    return handlers.executeAutoRegisterPath(params.autoRegisterPath);
+  }
+
+  if (!state.registered) {
+    return handlers.notRegisteredError();
+  }
+
+  switch (group) {
+    case 'status':
+      return handlers.executeStatus(state, dirs, cwd);
+
+    case 'list':
+      return handlers.executeList(state, dirs, cwd, { stuckThreshold: config?.stuckThreshold });
+
+    case 'whois': {
+      if (!params.name) {
+        return result('Error: name required for whois action.', {
+          mode: 'whois',
+          error: 'missing_name',
+        });
+      }
+      return handlers.executeWhois(state, dirs, cwd, params.name, {
+        stuckThreshold: config?.stuckThreshold,
+      });
+    }
+
+    case 'set_status':
+      return handlers.executeSetStatus(state, dirs, ctx, params.message);
+
+    case 'feed':
+      return handlers.executeFeed(
+        cwd,
+        requireChannel(),
+        params.limit,
+        config?.swarmEventsInFeed ?? true,
+        params.channel
+      );
+
+    case 'send':
+      return handlers.executeSend(
+        state,
+        dirs,
+        cwd,
+        params.to,
+        params.message,
+        params.replyTo,
+        params.channel ?? requireChannel()
+      );
+
+    case 'broadcast':
+      return result(
+        'Action "broadcast" was removed. Use `pi-messenger-swarm send #channel "message"` instead.',
+        { mode: 'broadcast_removed', error: 'removed_action', action }
+      );
+
+    case 'reserve':
+      if (!params.paths || params.paths.length === 0) {
+        return result('Error: paths required for reserve action.', {
+          mode: 'reserve',
+          error: 'missing_paths',
+        });
+      }
+      return handlers.executeReserve(state, dirs, ctx, params.paths, params.reason);
+
+    case 'release':
+      return handlers.executeRelease(state, dirs, ctx, params.paths ?? true);
+
+    case 'rename':
+      if (!params.name) {
+        return result('Error: name required for rename action.', {
+          mode: 'rename',
+          error: 'missing_name',
+        });
+      }
+      return handlers.executeRename(state, dirs, ctx, params.name, deliverMessage, updateStatus);
+
+    case 'swarm':
+      return executeSwarmStatus(cwd, params.channel ?? requireChannel(), sessionId);
+
+    case 'task': {
+      const operation = op ?? 'list';
+      return executeTask(
+        operation,
+        params,
+        state,
+        cwd,
+        params.channel ?? requireChannel(),
+        sessionId
+      );
+    }
+
+    // Backward-compatible aliases for older swarm calls
+    case 'claim': {
+      const taskId = params.taskId ?? params.id;
+      if (!taskId) {
+        return result('Error: id or taskId required for claim action.', {
+          mode: 'claim',
+          error: 'missing_task_id',
+        });
+      }
+      return executeTask(
+        'claim',
+        { ...params, id: taskId },
+        state,
+        cwd,
+        params.channel ?? requireChannel(),
+        sessionId
+      );
+    }
+
+    case 'unclaim': {
+      const taskId = params.taskId ?? params.id;
+      if (!taskId) {
+        return result('Error: id or taskId required for unclaim action.', {
+          mode: 'unclaim',
+          error: 'missing_task_id',
+        });
+      }
+      return executeTask(
+        'unclaim',
+        { ...params, id: taskId },
+        state,
+        cwd,
+        params.channel ?? requireChannel(),
+        sessionId
+      );
+    }
+
+    case 'complete': {
+      const taskId = params.taskId ?? params.id;
+      if (!taskId) {
+        return result('Error: id or taskId required for complete action.', {
+          mode: 'complete',
+          error: 'missing_task_id',
+        });
+      }
+      return executeTask(
+        'done',
+        { ...params, id: taskId },
+        state,
+        cwd,
+        params.channel ?? requireChannel(),
+        sessionId
+      );
+    }
+
+    case 'channels':
+      return handlers.executeChannels(state, dirs, cwd, params.showAll ? true : undefined);
+
+    case 'spawn':
+      return executeSpawn(op, params, state, cwd, sessionId, config?.maxConcurrentSpawns);
+
+    default:
+      return result(`Unknown action: ${action}`, {
+        mode: 'error',
+        error: 'unknown_action',
+        action,
+      });
+  }
+}
