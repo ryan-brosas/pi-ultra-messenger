@@ -458,6 +458,7 @@ async function handleLocalCommand(action: string, args: string[]): Promise<void>
     const coordinatorModel = extractFlag(rest, 'coordinator');
     const dryRun = rest.includes('--dry-run');
     const shouldStart = rest.includes('--start');
+
     if (workerFlags.length > 0) {
       const { config: supConfig, errors } = setupNonInteractive(projectRoot, workerFlags, maxConcurrent ? parseInt(maxConcurrent, 10) : undefined, coordinatorModel, dryRun);
       if (errors.length > 0) { for (const e of errors) process.stderr.write(`Error: ${e}\n`); process.exit(1); }
@@ -562,6 +563,7 @@ Usage:
   pi-ultra-messenger spawn history
   pi-ultra-messenger spawn stop <id>
 
+  pi-ultra-messenger worker status --phase <phase> [--bead <id>] [--spawn-id <id>] "<message>"
   pi-ultra-messenger supervisor start
   pi-ultra-messenger supervisor status
   pi-ultra-messenger supervisor pause
@@ -774,6 +776,32 @@ Environment:
             model: model || undefined,
           })
         );
+      }
+      break;
+    }
+
+    // ---- Worker telemetry ----
+    case 'worker': {
+      const sub = args.shift();
+      if (sub === 'status') {
+        const spawnId = extractFlag(args, 'spawn-id') || process.env.PI_SWARM_SPAWN_ID;
+        if (!spawnId) {
+          process.stderr.write('Error: worker status requires --spawn-id or PI_SWARM_SPAWN_ID env.\n');
+          process.exit(1);
+        }
+        const phase = extractFlag(args, 'phase');
+        const bead = extractFlag(args, 'bead');
+        const message = args.filter((a) => !a.startsWith('--')).join(' ') || undefined;
+        await postAction(buildAction({
+          action: 'worker.status',
+          id: spawnId,
+          phase,
+          taskId: bead,
+          message,
+        }));
+      } else {
+        process.stderr.write(`Unknown worker subcommand: ${sub}\n`);
+        process.exit(1);
       }
       break;
     }

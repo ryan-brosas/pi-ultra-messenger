@@ -484,6 +484,7 @@ export function spawnSubagent(
     ...process.env,
     PI_SWARM_SPAWNED: '1',
     PI_AGENT_NAME: name,
+    PI_SWARM_SPAWN_ID: id,
     ...(inheritedChannel ? { PI_MESSENGER_CHANNEL: inheritedChannel } : {}),
   };
 
