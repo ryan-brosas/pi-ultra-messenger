@@ -48,6 +48,14 @@ function createState(agentName: string): MessengerState {
   } as MessengerState;
 }
 
+function createUnregisteredState(): MessengerState {
+  return {
+    ...createState('Unregistered'),
+    registered: false,
+    agentName: '',
+  } as MessengerState;
+}
+
 afterEach(() => {
   for (const root of roots) {
     fs.rmSync(root, { recursive: true, force: true });
@@ -172,5 +180,50 @@ describe('pi-ultra-messenger router', () => {
 
     const res = await callRouter('spawn.list', {}, cwd, dirs, state);
     expect(res.content[0]?.text).toContain('No spawned agents');
+  });
+
+  it('allows spawn.list without registration', async () => {
+    const cwd = createTempCwd();
+    const dirs = createDirs(cwd);
+    const state = createUnregisteredState();
+
+    const res = await callRouter('spawn.list', {}, cwd, dirs, state);
+    expect(res.content[0]?.text).toContain('No spawned agents');
+  });
+
+  it('allows swarm without registration', async () => {
+    const cwd = createTempCwd();
+    const dirs = createDirs(cwd);
+    const state = createUnregisteredState();
+
+    const res = await callRouter('swarm', {}, cwd, dirs, state);
+    expect(res.content[0]?.text).toContain('Worker Pool');
+  });
+
+  it('rejects status without registration', async () => {
+    const cwd = createTempCwd();
+    const dirs = createDirs(cwd);
+    const state = createUnregisteredState();
+
+    const res = await callRouter('status', {}, cwd, dirs, state);
+    expect(res.content[0]?.text).toContain('Not registered');
+  });
+
+  it('rejects list without registration', async () => {
+    const cwd = createTempCwd();
+    const dirs = createDirs(cwd);
+    const state = createUnregisteredState();
+
+    const res = await callRouter('list', {}, cwd, dirs, state);
+    expect(res.content[0]?.text).toContain('Not registered');
+  });
+
+  it('rejects removed actions without registration as removed_action', async () => {
+    const cwd = createTempCwd();
+    const dirs = createDirs(cwd);
+    const state = createUnregisteredState();
+
+    const res = await callRouter('task.create', { title: 'test' }, cwd, dirs, state);
+    expect(res.content[0]?.text).toContain('Unknown or removed action');
   });
 });

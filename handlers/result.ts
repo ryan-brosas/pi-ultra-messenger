@@ -6,7 +6,7 @@ export function result(text: string, details: Record<string, unknown>) {
 }
 
 export function notRegisteredError() {
-  return result('Not registered. Use \`pi-messenger-swarm join\` to join the agent mesh first.', {
+  return result('Not registered. Use MCP Agent Mail to register your agent identity.', {
     mode: 'error',
     error: 'not_registered',
   });
