@@ -214,6 +214,7 @@ function spawnCreate(
       objective: params.objective,
       message,
       context: params.context,
+      model: params.model,
       name: params.name,
     };
 
@@ -256,6 +257,7 @@ function spawnCreate(
     persona: params.persona,
     objective,
     context: params.context,
+    model: params.model,
     name: params.name,
   };
 

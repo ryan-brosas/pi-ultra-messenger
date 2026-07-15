@@ -272,7 +272,7 @@ function discoverSkills(cwd: string): string[] {
 }
 
 function createArgs(state: SpawnState, model?: string): string[] {
-  const args = ['--mode', 'json', '--no-session'];
+  const args = ['--mode', 'json', '--name', state.name];
   if (model) {
     const slash = model.indexOf('/');
     if (slash !== -1) {
@@ -461,7 +461,7 @@ export function spawnSubagent(
     cwd,
     name,
     role,
-    model: agentFileModel,
+    model: request.model && request.model !== 'inherit' ? request.model : agentFileModel,
     persona: request.persona,
     objective,
     context: request.context,
@@ -501,7 +501,8 @@ export function spawnSubagent(
     stderr: '',
   };
 
-  const args = createArgs(spawnState, agentFileModel);
+  const effectiveModel = request.model && request.model !== 'inherit' ? request.model : agentFileModel;
+  const args = createArgs(spawnState, effectiveModel);
   const promptTmpDir = (args as any)._promptTmpDir as string | null;
 
   const proc = spawn('pi', args, {

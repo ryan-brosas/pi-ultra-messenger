@@ -51,6 +51,7 @@ export interface SpawnRequest {
   objective?: string;
   message?: string; // Alias for objective
   context?: string;
+  model?: string; // 'inherit' or 'provider/model' — validated through Pi
   name?: string;
   agentFile?: string; // Path to markdown file (with YAML frontmatter) to use as system prompt
 }
@@ -61,11 +62,13 @@ export interface SpawnedAgent {
   name: string;
   role: string;
   model?: string;
+  actualModel?: string;
   persona?: string;
   objective: string;
   context?: string;
   systemPrompt?: string;
   status: 'running' | 'completed' | 'failed' | 'stopped';
+  poolId?: string;
   startedAt: string;
   endedAt?: string;
   exitCode?: number;

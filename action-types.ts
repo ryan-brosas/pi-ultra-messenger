@@ -44,6 +44,7 @@ export interface MessengerActionParams {
   persona?: string;
   objective?: string;
   context?: string;
+  model?: string; // 'inherit' or 'provider/model'
   agentFile?: string;
   messageFile?: string;
   force?: boolean;

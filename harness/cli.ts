@@ -444,7 +444,7 @@ Usage:
   pi-ultra-messenger list
   pi-ultra-messenger swarm
 
-  pi-ultra-messenger spawn --role Researcher "Analyze X" [--persona "..."] [--name <name>] [--agent-file <path>] [--objective "..."] [--context "..."] [--message-file <path>]
+  pi-ultra-messenger spawn --role Researcher "Analyze X" [--persona "..."] [--name <name>] [--agent-file <path>] [--objective "..."] [--context "..."] [--message-file <path>] [--model <provider/model>]
   pi-ultra-messenger spawn list
   pi-ultra-messenger spawn history
   pi-ultra-messenger spawn stop <id>
@@ -599,6 +599,7 @@ Environment:
       } else {
         // spawn --role Role "mission text" [--persona "..."] [--name name]
         //      [--agent-file path] [--objective "..."] [--context "..."] [--message-file path]
+        //      [--model provider/model]
         const role = extractFlag(args, 'role') || extractFlag(args, 'title');
         const persona = extractFlag(args, 'persona');
         const name = extractFlag(args, 'name');
@@ -606,6 +607,7 @@ Environment:
         const objective = extractFlag(args, 'objective');
         const context = extractFlag(args, 'context');
         const messageFile = extractFlag(args, 'message-file');
+        const model = extractFlag(args, 'model');
 
         // --message-file takes priority: read mission text from a file to avoid
         // shell interpolation of backticks, ${...}, and parentheses in the prompt.
@@ -639,6 +641,7 @@ Environment:
             objective: objective || undefined,
             context: context || undefined,
             message: message || undefined,
+            model: model || undefined,
           })
         );
       }
