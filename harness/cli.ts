@@ -36,6 +36,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as http from 'node:http';
 import { setupNonInteractive, setupInteractive } from '../setup.js';
+import { validateModelSelection } from '../model-discovery.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -427,6 +428,124 @@ function positional(args: string[], index: number): string | undefined {
   return positional[index];
 }
 
+/**
+ * Handle local commands that don't need the harness server:
+ * setup, pool, supervisor — these read/write .pi/pi-messenger.json directly.
+ */
+async function handleLocalCommand(action: string, args: string[]): Promise<void> {
+  const projectRoot = resolveProjectRoot(process.cwd());
+  const configPath = path.join(projectRoot, '.pi', 'pi-messenger.json');
+  let config: Record<string, unknown> = {};
+  if (fs.existsSync(configPath)) {
+    try { config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch { /* start fresh */ }
+  }
+  const supervisor = (config.supervisor ?? {}) as Record<string, unknown>;
+
+  if (action === 'setup') {
+    const workerFlags: string[] = [];
+    const rest: string[] = [];
+    for (const a of args) {
+      if (a.startsWith('--worker=')) workerFlags.push(a.slice('--worker='.length));
+      else if (a === '--worker' && args.indexOf(a) + 1 < args.length) { workerFlags.push(args[args.indexOf(a) + 1]); args[args.indexOf(a) + 1] = ''; }
+      else if (a === '--dry-run') rest.push('--dry-run');
+      else if (a.startsWith('--max-concurrent=')) rest.push(a);
+      else if (a === '--max-concurrent' && args.indexOf(a) + 1 < args.length) { rest.push(a, args[args.indexOf(a) + 1]); args[args.indexOf(a) + 1] = ''; }
+      else if (a.startsWith('--coordinator=')) rest.push(a);
+      else if (a === '--coordinator' && args.indexOf(a) + 1 < args.length) { rest.push(a, args[args.indexOf(a) + 1]); args[args.indexOf(a) + 1] = ''; }
+      else if (a === '--start') rest.push('--start');
+    }
+    const maxConcurrent = extractFlag(rest, 'max-concurrent');
+    const coordinatorModel = extractFlag(rest, 'coordinator');
+    const dryRun = rest.includes('--dry-run');
+    const shouldStart = rest.includes('--start');
+    if (workerFlags.length > 0) {
+      const { config: supConfig, errors } = setupNonInteractive(projectRoot, workerFlags, maxConcurrent ? parseInt(maxConcurrent, 10) : undefined, coordinatorModel, dryRun);
+      if (errors.length > 0) { for (const e of errors) process.stderr.write(`Error: ${e}\n`); process.exit(1); }
+      process.stdout.write(`Setup complete. ${supConfig.workerPools.length} pool(s) configured.\n`);
+      if (!dryRun) process.stdout.write('Configuration written to .pi/pi-messenger.json\n');
+      if (shouldStart) process.stdout.write('Run "pi-ultra-messenger supervisor start" to begin.\n');
+    } else {
+      await setupInteractive(projectRoot);
+    }
+    return;
+  }
+
+  if (action === 'pool') {
+    const sub = args.shift();
+    let pools = (supervisor.workerPools ?? []) as Array<Record<string, unknown>>;
+    if (sub === 'list') {
+      if (pools.length === 0) { process.stdout.write('No pools configured.\n'); return; }
+      for (const p of pools) {
+        const model = typeof p.model === 'object' && p.model ? p.model : {};
+        const modelStr = (model as Record<string, unknown>).mode === 'inherit' ? 'inherit' : (model as Record<string, unknown>).model ?? '?';
+        process.stdout.write(`${p.id}: ${p.workers} workers, model=${modelStr}, enabled=${p.enabled ?? true}\n`);
+      }
+    } else if (sub === 'add') {
+      const model = extractFlag(args, 'model');
+      const workers = extractFlag(args, 'workers');
+      if (!model || !workers) { process.stderr.write('Error: pool add requires --model and --workers.\n'); process.exit(1); }
+      if (model !== 'inherit') {
+        const modelErr = validateModelSelection(model);
+        if (modelErr) { process.stderr.write(`Error: ${modelErr}\n`); process.exit(1); }
+      }
+      const poolId = `pool-${pools.length}`;
+      pools.push({ id: poolId, workers: parseInt(workers, 10), model: model === 'inherit' ? { mode: 'inherit' } : { mode: 'exact', model }, enabled: true });
+      supervisor.workerPools = pools; config.supervisor = supervisor;
+      mkdirSync(path.dirname(configPath), { recursive: true });
+      writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+      process.stdout.write(`Added pool ${poolId}.\n`);
+    } else if (sub === 'remove') {
+      const id = args[0];
+      if (!id) { process.stderr.write('Error: pool remove requires <id>.\n'); process.exit(1); }
+      pools = pools.filter((p) => p.id !== id);
+      supervisor.workerPools = pools; config.supervisor = supervisor;
+      writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+      process.stdout.write(`Removed pool ${id}.\n`);
+    } else if (sub === 'scale') {
+      const id = args[0];
+      const workers = extractFlag(args, 'workers');
+      if (!id || !workers) { process.stderr.write('Error: pool scale requires <id> --workers <n>.\n'); process.exit(1); }
+      const pool = pools.find((p) => p.id === id);
+      if (!pool) { process.stderr.write(`Error: pool ${id} not found.\n`); process.exit(1); }
+      pool.workers = parseInt(workers, 10);
+      supervisor.workerPools = pools; config.supervisor = supervisor;
+      writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+      process.stdout.write(`Scaled pool ${id} to ${workers} workers.\n`);
+    } else if (sub === 'enable' || sub === 'disable') {
+      const id = args[0];
+      if (!id) { process.stderr.write(`Error: pool ${sub} requires <id>.\n`); process.exit(1); }
+      const pool = pools.find((p) => p.id === id);
+      if (!pool) { process.stderr.write(`Error: pool ${id} not found.\n`); process.exit(1); }
+      pool.enabled = sub === 'enable';
+      supervisor.workerPools = pools; config.supervisor = supervisor;
+      writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+      process.stdout.write(`${sub === 'enable' ? 'Enabled' : 'Disabled'} pool ${id}.\n`);
+    } else {
+      process.stderr.write(`Unknown pool subcommand: ${sub}\n`); process.exit(1);
+    }
+    return;
+  }
+
+  if (action === 'supervisor') {
+    const sub = args.shift();
+    if (sub === 'start') { supervisor.enabled = true; supervisor.paused = false; }
+    else if (sub === 'stop') { supervisor.enabled = false; }
+    else if (sub === 'pause') { supervisor.paused = true; }
+    else if (sub === 'resume') { supervisor.paused = false; }
+    else if (sub === 'status') {
+      process.stdout.write(`Supervisor: enabled=${supervisor.enabled ?? false} paused=${supervisor.paused ?? false}\n`);
+      const pools = (supervisor.workerPools ?? []) as Array<Record<string, unknown>>;
+      process.stdout.write(`Pools: ${pools.length}\n`);
+      return;
+    } else { process.stderr.write(`Unknown supervisor subcommand: ${sub}\n`); process.exit(1); }
+    config.supervisor = supervisor;
+    mkdirSync(path.dirname(configPath), { recursive: true });
+    writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    process.stdout.write(`Supervisor ${sub} complete.\n`);
+    return;
+  }
+}
+
 async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
 
@@ -534,16 +653,16 @@ Environment:
     return;
   }
 
-  // --- JSON passthrough ---
-  // If the first arg looks like a JSON object, pass it through directly
-  if (first.startsWith('{')) {
-    if (!(await startServer())) process.exit(1);
-    await postAction(first);
+  // --- Local commands (no server needed) ---
+  if (first === 'setup' || first === 'pool' || first === 'supervisor') {
+    const args = [...rawArgs];
+    args.shift(); // remove the command name
+    const action = first;
+    await handleLocalCommand(action, args);
     return;
   }
 
-  // --- Natural subcommands ---
-  if (!(await startServer())) process.exit(1);
+  // --- JSON passthrough ---
 
   // Auto-restart the server if its version doesn't match the CLI's.
   // A stale server silently breaks identity resolution, session handling,
@@ -584,165 +703,6 @@ Environment:
   const action = args.shift()!;
 
   switch (action) {
-    // ---- Setup ----
-    case 'setup': {
-      const workerFlags: string[] = [];
-      const rest: string[] = [];
-      for (const a of args) {
-        if (a.startsWith('--worker=')) {
-          workerFlags.push(a.slice('--worker='.length));
-        } else if (a === '--worker' && args.indexOf(a) + 1 < args.length) {
-          workerFlags.push(args[args.indexOf(a) + 1]);
-          args[args.indexOf(a) + 1] = '';
-        } else if (a === '--dry-run') {
-          rest.push('--dry-run');
-        } else if (a.startsWith('--max-concurrent=')) {
-          rest.push(a);
-        } else if (a === '--max-concurrent' && args.indexOf(a) + 1 < args.length) {
-          rest.push(a, args[args.indexOf(a) + 1]);
-          args[args.indexOf(a) + 1] = '';
-        } else if (a.startsWith('--coordinator=')) {
-          rest.push(a);
-        } else if (a === '--coordinator' && args.indexOf(a) + 1 < args.length) {
-          rest.push(a, args[args.indexOf(a) + 1]);
-          args[args.indexOf(a) + 1] = '';
-        } else if (a === '--start') {
-          rest.push('--start');
-        } else if (a) {
-          // skip
-        }
-      }
-      const maxConcurrent = extractFlag(rest, 'max-concurrent');
-      const coordinatorModel = extractFlag(rest, 'coordinator');
-      const dryRun = rest.includes('--dry-run');
-      const shouldStart = rest.includes('--start');
-
-      if (workerFlags.length > 0) {
-        // Non-interactive
-        const { config, errors } = setupNonInteractive(
-          resolveProjectRoot(process.cwd()),
-          workerFlags,
-          maxConcurrent ? parseInt(maxConcurrent, 10) : undefined,
-          coordinatorModel,
-          dryRun
-        );
-        if (errors.length > 0) {
-          for (const e of errors) process.stderr.write(`Error: ${e}\n`);
-          process.exit(1);
-        }
-        process.stdout.write(`Setup complete. ${config.workerPools.length} pool(s) configured.\n`);
-        if (!dryRun) process.stdout.write('Configuration written to .pi/pi-messenger.json\n');
-        if (shouldStart) process.stdout.write('Run "pi-ultra-messenger supervisor start" to begin.\n');
-      } else {
-        // Interactive
-        await setupInteractive(resolveProjectRoot(process.cwd()));
-      }
-      break;
-    }
-
-    // ---- Pool management ----
-    case 'pool': {
-      const sub = args.shift();
-      const projectRoot = resolveProjectRoot(process.cwd());
-      const configPath = path.join(projectRoot, '.pi', 'pi-messenger.json');
-      let config: Record<string, unknown> = {};
-      if (fs.existsSync(configPath)) {
-        try { config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch {}
-      }
-      const supervisor = (config.supervisor ?? {}) as Record<string, unknown>;
-      let pools = (supervisor.workerPools ?? []) as Array<Record<string, unknown>>;
-
-      if (sub === 'list') {
-        if (pools.length === 0) { process.stdout.write('No pools configured.\n'); break; }
-        for (const p of pools) {
-          const model = typeof p.model === 'object' && p.model ? p.model : {};
-          const modelStr = (model as Record<string, unknown>).mode === 'inherit' ? 'inherit' : (model as Record<string, unknown>).model ?? '?';
-          process.stdout.write(`${p.id}: ${p.workers} workers, model=${modelStr}, enabled=${p.enabled ?? true}\n`);
-        }
-      } else if (sub === 'add') {
-        const model = extractFlag(args, 'model');
-        const workers = extractFlag(args, 'workers');
-        if (!model || !workers) { process.stderr.write('Error: pool add requires --model and --workers.\n'); process.exit(1); }
-        const poolId = `pool-${pools.length}`;
-        pools.push({ id: poolId, workers: parseInt(workers, 10), model: model === 'inherit' ? { mode: 'inherit' } : { mode: 'exact', model }, enabled: true });
-        supervisor.workerPools = pools;
-        config.supervisor = supervisor;
-        mkdirSync(path.dirname(configPath), { recursive: true });
-        writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
-        process.stdout.write(`Added pool ${poolId}.\n`);
-      } else if (sub === 'remove') {
-        const id = args[0];
-        if (!id) { process.stderr.write('Error: pool remove requires <id>.\n'); process.exit(1); }
-        pools = pools.filter((p) => p.id !== id);
-        supervisor.workerPools = pools;
-        config.supervisor = supervisor;
-        writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
-        process.stdout.write(`Removed pool ${id}.\n`);
-      } else if (sub === 'scale') {
-        const id = args[0];
-        const workers = extractFlag(args, 'workers');
-        if (!id || !workers) { process.stderr.write('Error: pool scale requires <id> --workers <n>.\n'); process.exit(1); }
-        const pool = pools.find((p) => p.id === id);
-        if (!pool) { process.stderr.write(`Error: pool ${id} not found.\n`); process.exit(1); }
-        pool.workers = parseInt(workers, 10);
-        supervisor.workerPools = pools;
-        config.supervisor = supervisor;
-        writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
-        process.stdout.write(`Scaled pool ${id} to ${workers} workers.\n`);
-      } else if (sub === 'enable' || sub === 'disable') {
-        const id = args[0];
-        if (!id) { process.stderr.write(`Error: pool ${sub} requires <id>.\n`); process.exit(1); }
-        const pool = pools.find((p) => p.id === id);
-        if (!pool) { process.stderr.write(`Error: pool ${id} not found.\n`); process.exit(1); }
-        pool.enabled = sub === 'enable';
-        supervisor.workerPools = pools;
-        config.supervisor = supervisor;
-        writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
-        process.stdout.write(`${sub === 'enable' ? 'Enabled' : 'Disabled'} pool ${id}.\n`);
-      } else {
-        process.stderr.write(`Unknown pool subcommand: ${sub}\n`);
-        process.exit(1);
-      }
-      break;
-    }
-
-    // ---- Supervisor ----
-    case 'supervisor': {
-      const sub = args.shift();
-      const projectRoot = resolveProjectRoot(process.cwd());
-      const configPath = path.join(projectRoot, '.pi', 'pi-messenger.json');
-      let config: Record<string, unknown> = {};
-      if (fs.existsSync(configPath)) {
-        try { config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch {}
-      }
-      const supervisor = (config.supervisor ?? {}) as Record<string, unknown>;
-
-      if (sub === 'start') {
-        supervisor.enabled = true;
-        supervisor.paused = false;
-      } else if (sub === 'stop') {
-        supervisor.enabled = false;
-      } else if (sub === 'pause') {
-        supervisor.paused = true;
-      } else if (sub === 'resume') {
-        supervisor.paused = false;
-      } else if (sub === 'status') {
-        process.stdout.write(`Supervisor: enabled=${supervisor.enabled ?? false} paused=${supervisor.paused ?? false}\n`);
-        const pools = (supervisor.workerPools ?? []) as Array<Record<string, unknown>>;
-        process.stdout.write(`Pools: ${pools.length}\n`);
-        break;
-      } else {
-        process.stderr.write(`Unknown supervisor subcommand: ${sub}\n`);
-        process.exit(1);
-      }
-
-      config.supervisor = supervisor;
-      mkdirSync(path.dirname(configPath), { recursive: true });
-      writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
-      process.stdout.write(`Supervisor ${sub} complete.\n`);
-      break;
-    }
-
     case 'status': {
       await postAction(buildAction({ action: 'status' }));
       break;
