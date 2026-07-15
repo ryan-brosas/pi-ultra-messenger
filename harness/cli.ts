@@ -526,24 +526,8 @@ async function handleLocalCommand(action: string, args: string[]): Promise<void>
     return;
   }
 
-  if (action === 'supervisor') {
-    const sub = args.shift();
-    if (sub === 'start') { supervisor.enabled = true; supervisor.paused = false; }
-    else if (sub === 'stop') { supervisor.enabled = false; }
-    else if (sub === 'pause') { supervisor.paused = true; }
-    else if (sub === 'resume') { supervisor.paused = false; }
-    else if (sub === 'status') {
-      process.stdout.write(`Supervisor: enabled=${supervisor.enabled ?? false} paused=${supervisor.paused ?? false}\n`);
-      const pools = (supervisor.workerPools ?? []) as Array<Record<string, unknown>>;
-      process.stdout.write(`Pools: ${pools.length}\n`);
-      return;
-    } else { process.stderr.write(`Unknown supervisor subcommand: ${sub}\n`); process.exit(1); }
-    config.supervisor = supervisor;
-    mkdirSync(path.dirname(configPath), { recursive: true });
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
-    process.stdout.write(`Supervisor ${sub} complete.\n`);
-    return;
-  }
+  // supervisor is handled by the server-backed switch below
+  if (action === 'supervisor') return;
 }
 
 async function main(): Promise<void> {
@@ -669,8 +653,15 @@ Environment:
     return;
   }
 
-  // --- Natural subcommands ---
-  if (!(await startServer())) process.exit(1);
+  // --- Local commands (no server needed) ---
+  if (first === 'setup' || first === 'pool') {
+    const localArgs = [...rawArgs];
+    localArgs.shift();
+    await handleLocalCommand(first, localArgs);
+    return;
+  }
+
+  // --- Natural subcommands (server needed) ---
 
   // Auto-restart the server if its version doesn't match the CLI's.
   // A stale server silently breaks identity resolution, session handling,
@@ -783,6 +774,31 @@ Environment:
             model: model || undefined,
           })
         );
+      }
+      break;
+    }
+
+    // ---- Supervisor (server-backed) ----
+    case 'supervisor': {
+      const sub = args.shift();
+      const projectRoot = resolveProjectRoot(process.cwd());
+      const { status, body } = await httpPost(
+        `${BASE_URL}/supervisor`,
+        JSON.stringify({ op: sub, cwd: projectRoot })
+      );
+      if (status !== 200) {
+        process.stderr.write(`Error: supervisor ${sub} failed (${status}).\n`);
+        process.exit(1);
+      }
+      const resp = JSON.parse(body);
+      if (sub === 'status') {
+        const snap = resp.snapshot;
+        process.stdout.write(`Supervisor: enabled=${snap.enabled} paused=${snap.paused}\n`);
+        if (snap.lastReason) process.stdout.write(`Last: ${snap.lastReason}\n`);
+        if (snap.lastReadyCount !== undefined) process.stdout.write(`Ready: ${snap.lastReadyCount}\n`);
+        if (snap.lastSpawnedCount !== undefined) process.stdout.write(`Spawned: ${snap.lastSpawnedCount}\n`);
+      } else {
+        process.stdout.write(`Supervisor ${sub} complete.\n`);
       }
       break;
     }

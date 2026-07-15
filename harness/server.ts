@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import type { MessengerState, Dirs, AgentMailMessage, NameThemeConfig } from '../lib.js';
 import { loadConfig, type MessengerConfig } from '../config.js';
 import { executeAction, type RouterConfig } from '../router.js';
+import { ProjectSupervisor } from '../swarm/supervisor.js';
 import {
   normalizeChannelId,
   ensureDefaultNamedChannels,
@@ -60,6 +61,7 @@ function getMessengerDirs(cwd?: string): Dirs {
 // Bootstrap dirs from the server's startup cwd for health checks and
 // initial setup. Per-request dirs are resolved in the action handler
 // using the requesting agent's cwd from registration files.
+const startupCwd = normalizeCwd(process.env.PI_MESSENGER_CWD ?? process.cwd());
 const startupDirs = getMessengerDirs();
 
 // Ensure channel / registry dirs exist for the startup project
@@ -121,6 +123,17 @@ function routerConfigForCwd(cwd: string): RouterConfig {
   return {
     maxConcurrentSpawns: config.maxConcurrentSpawns,
   };
+}
+
+function writeSupervisorConfig(cwd: string, patch: Record<string, unknown>): void {
+  const configPath = join(cwd, '.pi', 'pi-messenger.json');
+  let existing: Record<string, unknown> = {};
+  try { existing = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch { /* fresh */ }
+  const supervisor = (existing.supervisor ?? {}) as Record<string, unknown>;
+  Object.assign(supervisor, patch);
+  existing.supervisor = supervisor;
+  fs.mkdirSync(join(cwd, '.pi'), { recursive: true });
+  fs.writeFileSync(configPath, JSON.stringify(existing, null, 2) + '\n', 'utf-8');
 }
 
 interface RegistrationFile {
@@ -492,6 +505,51 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
     return;
   }
 
+  // Supervisor lifecycle endpoints
+  if (req.method === 'POST' && url.pathname === '/supervisor') {
+    let body: string;
+    try { body = await readBody(req); } catch { res.writeHead(400, TEXT_JSON); res.end(JSON.stringify({ ok: false, error: 'failed to read body' })); return; }
+    let params: Record<string, unknown>;
+    try { params = JSON.parse(body); } catch { res.writeHead(400, TEXT_JSON); res.end(JSON.stringify({ ok: false, error: 'invalid JSON' })); return; }
+    const op = params.op as string | undefined;
+    const projectCwd = normalizeCwd((params.cwd as string) || process.env.PI_MESSENGER_CWD || process.cwd());
+
+    if (op === 'start' || op === 'resume') {
+      let sup = supervisors.get(projectCwd);
+      if (!sup) { sup = new ProjectSupervisor(projectCwd); supervisors.set(projectCwd, sup); }
+      // Write enabled=true to config then start
+      writeSupervisorConfig(projectCwd, { enabled: true, paused: false });
+      sup.start();
+      serverLog(`supervisor ${op} for ${projectCwd}`);
+      res.writeHead(200, TEXT_JSON); res.end(JSON.stringify({ ok: true, op, snapshot: sup.getSnapshot() }));
+      return;
+    }
+    if (op === 'stop') {
+      const sup = supervisors.get(projectCwd);
+      if (sup) sup.stop();
+      writeSupervisorConfig(projectCwd, { enabled: false });
+      serverLog(`supervisor stop for ${projectCwd}`);
+      res.writeHead(200, TEXT_JSON); res.end(JSON.stringify({ ok: true, op, snapshot: sup?.getSnapshot() }));
+      return;
+    }
+    if (op === 'pause') {
+      const sup = supervisors.get(projectCwd);
+      writeSupervisorConfig(projectCwd, { paused: true });
+      serverLog(`supervisor pause for ${projectCwd}`);
+      res.writeHead(200, TEXT_JSON); res.end(JSON.stringify({ ok: true, op, snapshot: sup?.getSnapshot() }));
+      return;
+    }
+    if (op === 'status') {
+      const sup = supervisors.get(projectCwd);
+      const snapshot = sup?.getSnapshot() ?? { cwd: projectCwd, enabled: false, paused: false };
+      res.writeHead(200, TEXT_JSON); res.end(JSON.stringify({ ok: true, snapshot }));
+      return;
+    }
+    res.writeHead(400, TEXT_JSON); res.end(JSON.stringify({ ok: false, error: `unknown supervisor op: ${op}` }));
+    return;
+  }
+
+
   // Action endpoint
   if (req.method === 'POST' && url.pathname === '/action') {
     let body: string;
@@ -712,6 +770,7 @@ const shutdown = (signal: string, preserveSpawns = true) => {
   } else {
     stopAllSpawned();
   }
+  stopSupervisors();
   server.close();
   const delay = preserveSpawns ? 500 : 2000;
   setTimeout(() => {
@@ -739,3 +798,26 @@ process.on('unhandledRejection', (reason) => {
 });
 
 export { server, startupDirs };
+
+// Start the supervisor if configured
+const supervisors = new Map<string, ProjectSupervisor>();
+function startSupervisors(): void {
+  const config = loadConfig(startupCwd);
+  if (config.supervisor?.enabled) {
+    let sup = supervisors.get(startupCwd);
+    if (!sup) {
+      sup = new ProjectSupervisor(startupCwd);
+      supervisors.set(startupCwd, sup);
+    }
+    sup.start();
+    serverLog(`supervisor started for ${startupCwd}`);
+  }
+}
+function stopSupervisors(): void {
+  for (const sup of supervisors.values()) {
+    sup.stop();
+  }
+  supervisors.clear();
+  serverLog('supervisors stopped');
+}
+startSupervisors();
