@@ -1,23 +1,23 @@
 #!/usr/bin/env node
 /**
- * pi-ultra-messenger — Pi worker pool CLI.
+ * pi-messenger-swarm — Pi worker pool CLI.
  *
  * Usage:
- *   pi-ultra-messenger status
- *   pi-ultra-messenger list
- *   pi-ultra-messenger swarm
- *   pi-ultra-messenger spawn --role Researcher "Analyze the protocol" [--persona "..."] [--agent-file path] [--objective "..."] [--context "..."] [--message-file <path>]
- *   pi-ultra-messenger spawn list
- *   pi-ultra-messenger spawn history
- *   pi-ultra-messenger spawn stop <id>
- *   pi-ultra-messenger --status
- *   pi-ultra-messenger --start
- *   pi-ultra-messenger --stop
- *   pi-ultra-messenger --restart
- *   pi-ultra-messenger --logs
+ *   pi-messenger-swarm status
+ *   pi-messenger-swarm list
+ *   pi-messenger-swarm swarm
+ *   pi-messenger-swarm spawn --role Researcher "Analyze the protocol" [--persona "..."] [--agent-file path] [--objective "..."] [--context "..."] [--message-file <path>]
+ *   pi-messenger-swarm spawn list
+ *   pi-messenger-swarm spawn history
+ *   pi-messenger-swarm spawn stop <id>
+ *   pi-messenger-swarm --status
+ *   pi-messenger-swarm --start
+ *   pi-messenger-swarm --stop
+ *   pi-messenger-swarm --restart
+ *   pi-messenger-swarm --logs
  *
  * Also accepts JSON for programmatic use:
- *   pi-ultra-messenger '{ "action": "spawn", "role": "Researcher", "message": "Analyze X" }'
+ *   pi-messenger-swarm '{ "action": "spawn", "role": "Researcher", "message": "Analyze X" }'
  *
  * Coordination surfaces (task/feed/send/reserve/release/channels/join/whois/rename/set_status)
  * have been removed. Workers coordinate through MCP Agent Mail and follow the target
@@ -464,7 +464,7 @@ async function handleLocalCommand(action: string, args: string[]): Promise<void>
       if (errors.length > 0) { for (const e of errors) process.stderr.write(`Error: ${e}\n`); process.exit(1); }
       process.stdout.write(`Setup complete. ${supConfig.workerPools.length} pool(s) configured.\n`);
       if (!dryRun) process.stdout.write('Configuration written to .pi/pi-messenger.json\n');
-      if (shouldStart) process.stdout.write('Run "pi-ultra-messenger supervisor start" to begin.\n');
+      if (shouldStart) process.stdout.write('Run "pi-messenger-swarm supervisor start" to begin.\n');
     } else {
       await setupInteractive(projectRoot);
     }
@@ -543,41 +543,40 @@ async function main(): Promise<void> {
 
   // --- Meta commands (no server needed for --help) ---
   if (first === '--help' || first === '-h') {
-    process.stdout.write(`pi-ultra-messenger — Pi worker pool CLI
+    process.stdout.write(`pi-messenger-swarm — Pi worker pool CLI
 
 Usage:
-  pi-ultra-messenger status
-  pi-ultra-messenger list
-  pi-ultra-messenger swarm
+  pi-messenger-swarm status
+  pi-messenger-swarm list
+  pi-messenger-swarm swarm
 
-  pi-ultra-messenger setup [--worker '<model>=<count>'] [--max-concurrent <n>] [--start] [--dry-run]
-  pi-ultra-messenger pool list
-  pi-ultra-messenger pool add --model <provider/model> --workers <n>
-  pi-ultra-messenger pool remove <id>
-  pi-ultra-messenger pool scale <id> --workers <n>
-  pi-ultra-messenger pool enable <id>
-  pi-ultra-messenger pool disable <id>
+  pi-messenger-swarm setup [--worker '<model>=<count>'] [--max-concurrent <n>] [--start] [--dry-run]
+  pi-messenger-swarm pool list
+  pi-messenger-swarm pool add --model <provider/model> --workers <n>
+  pi-messenger-swarm pool remove <id>
+  pi-messenger-swarm pool scale <id> --workers <n>
+  pi-messenger-swarm pool enable <id>
+  pi-messenger-swarm pool disable <id>
 
-  pi-ultra-messenger spawn --role Researcher "Analyze X" [--persona "..."] [--name <name>] [--agent-file <path>] [--objective "..."] [--context "..."] [--message-file <path>] [--model <provider/model>]
-  pi-ultra-messenger spawn list
-  pi-ultra-messenger spawn history
-  pi-ultra-messenger spawn stop <id>
+  pi-messenger-swarm spawn --role Researcher "Analyze X" [--persona "..."] [--name <name>] [--agent-file <path>] [--objective "..."] [--context "..."] [--message-file <path>] [--model <provider/model>]
+  pi-messenger-swarm spawn list
+  pi-messenger-swarm spawn history
+  pi-messenger-swarm spawn stop <id>
 
-  pi-ultra-messenger worker status --phase <phase> [--bead <id>] [--spawn-id <id>] "<message>"
-  pi-ultra-messenger supervisor start
-  pi-ultra-messenger supervisor status
-  pi-ultra-messenger supervisor pause
-  pi-ultra-messenger supervisor resume
-  pi-ultra-messenger supervisor stop
+  pi-messenger-swarm worker status --phase <phase> [--bead <id>] [--spawn-id <id>] [--agent-name <name>] "<message>"
+  pi-messenger-swarm supervisor status
+  pi-messenger-swarm supervisor pause
+  pi-messenger-swarm supervisor resume
+  pi-messenger-swarm supervisor stop
 
-  pi-ultra-messenger --status    Check if harness server is running
-  pi-ultra-messenger --start     Start the harness server
-  pi-ultra-messenger --stop      Stop the harness server
-  pi-ultra-messenger --restart   Restart the harness server
-  pi-ultra-messenger --logs      Tail the server log
+  pi-messenger-swarm --status    Check if harness server is running
+  pi-messenger-swarm --start     Start the harness server
+  pi-messenger-swarm --stop      Stop the harness server
+  pi-messenger-swarm --restart   Restart the harness server
+  pi-messenger-swarm --logs      Tail the server log
 
 Also accepts JSON for programmatic use:
-  pi-ultra-messenger '{ "action": "spawn", "role": "Researcher", "message": "Analyze X" }'
+  pi-messenger-swarm '{ "action": "spawn", "role": "Researcher", "message": "Analyze X" }'
 
 Environment:
   PI_MESSENGER_PORT     Server port (default: 9877)
@@ -791,6 +790,7 @@ Environment:
         }
         const phase = extractFlag(args, 'phase');
         const bead = extractFlag(args, 'bead');
+        const agentName = extractFlag(args, 'agent-name') || process.env.PI_AGENT_NAME;
         const message = args.filter((a) => !a.startsWith('--')).join(' ') || undefined;
         await postAction(buildAction({
           action: 'worker.status',
@@ -798,6 +798,7 @@ Environment:
           phase,
           taskId: bead,
           message,
+          name: agentName,
         }));
       } else {
         process.stderr.write(`Unknown worker subcommand: ${sub}\n`);
@@ -842,6 +843,6 @@ Environment:
 }
 
 main().catch((err) => {
-  process.stderr.write(`pi-ultra-messenger: ${err instanceof Error ? err.message : err}\n`);
+  process.stderr.write(`pi-messenger-swarm: ${err instanceof Error ? err.message : err}\n`);
   process.exit(1);
 });

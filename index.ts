@@ -35,6 +35,7 @@ import { loadConfig, matchesAutoRegisterPath, type MessengerConfig } from './con
 import { logFeedEvent, pruneFeed } from './feed/index.js';
 import { onLiveWorkersChanged } from './swarm/live-progress.js';
 import { stopAllSpawned } from './swarm/spawn.js';
+import { listSpawned } from './swarm/spawn.js';
 import { createDeliverMessage } from './extension/deliver-message.js';
 import { createStatusController } from './extension/status.js';
 import { createActivityTracker } from './extension/activity.js';
@@ -157,7 +158,7 @@ export default function piMessengerExtension(pi: ExtensionAPI) {
     pi.sendMessage(
       {
         customType: 'messenger_context',
-        content: `You are agent "${state.agentName}" in ${locationPart}. Use pi-ultra-messenger for spawn/status/list. Workers coordinate through MCP Agent Mail and follow the target project's AGENTS.md. Examples: pi-ultra-messenger swarm | pi-ultra-messenger spawn --role Researcher "Analyze X" | pi-ultra-messenger spawn list. Task/feed/send/reserve commands have been removed — use MCP Agent Mail for coordination. See SKILL for full reference.`,
+        content: `You are agent "${state.agentName}" in ${locationPart}. Use pi-messenger-swarm for spawn/status/list. Workers coordinate through MCP Agent Mail and follow the target project's AGENTS.md. Examples: pi-messenger-swarm swarm | pi-messenger-swarm spawn --role Researcher "Analyze X" | pi-messenger-swarm spawn list. Task/feed/send/reserve commands have been removed — use MCP Agent Mail for coordination. See SKILL for full reference.`,
         display: false,
       },
       { triggerTurn: false }
@@ -258,6 +259,69 @@ export default function piMessengerExtension(pi: ExtensionAPI) {
       overlayHandle = null;
       overlayTui = null;
       updateStatus(ctx);
+    },
+  });
+
+  pi.registerCommand('swarm', {
+    description: 'Open worker pool overlay (Overview, Workers, Pools, Diagnostics)',
+    handler: async (_args, ctx) => {
+      if (!ctx.hasUI) return;
+      latestCtx = ctx;
+
+      const config = loadConfig(process.cwd());
+      const sessionId = 'pi-swarm-supervisor';
+      const workers = listSpawned(process.cwd(), sessionId, true);
+      const running = workers.filter((w) => w.status === 'running');
+      const completed = workers.filter((w) => w.status === 'completed');
+      const failed = workers.filter((w) => w.status === 'failed');
+
+      const lines: string[] = [];
+      lines.push('# Worker Pool', '');
+
+      // Overview
+      lines.push('## Overview');
+      lines.push(`Running: ${running.length}  Completed: ${completed.length}  Failed: ${failed.length}`);
+      lines.push(`Max concurrent: ${config.maxConcurrentSpawns}`);
+      lines.push(`Supervisor: ${config.supervisor.enabled ? 'enabled' : 'disabled'}${config.supervisor.paused ? ' (paused)' : ''}`);
+      lines.push('');
+
+      // Workers
+      if (running.length > 0) {
+        lines.push('## Running Workers');
+        for (const w of running.slice(0, 10)) {
+          const phase = w.phase ? ` · ${w.phase}` : '';
+          const bead = w.currentBeadId ? ` → ${w.currentBeadId}` : '';
+          const msg = w.statusMessage ? ` — ${w.statusMessage}` : '';
+          lines.push(`  ${w.name} (${w.role})${phase}${bead}${msg}`);
+        }
+        lines.push('');
+      }
+
+      // Pools
+      if (config.supervisor.workerPools.length > 0) {
+        lines.push('## Pools');
+        for (const pool of config.supervisor.workerPools) {
+          const model = pool.model.mode === 'inherit' ? 'inherit' : pool.model.model;
+          const state = pool.enabled ? 'enabled' : 'disabled';
+          lines.push(`  ${pool.id}: ${pool.workers} workers · ${model} · ${state}`);
+        }
+        lines.push('');
+      }
+
+      // Diagnostics
+      lines.push('## Diagnostics');
+      lines.push(`Project: ${process.cwd()}`);
+      lines.push(`AGENTS.md: ${fs.existsSync(join(process.cwd(), 'AGENTS.md')) ? 'found' : 'not found'}`);
+      lines.push(`Supervisor session: ${sessionId}`);
+
+      pi.sendMessage(
+        {
+          customType: 'swarm_snapshot',
+          content: lines.join('\n'),
+          display: true,
+        },
+        { triggerTurn: true }
+      );
     },
   });
 

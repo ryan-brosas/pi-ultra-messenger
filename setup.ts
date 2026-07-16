@@ -1,5 +1,5 @@
 /**
- * Setup wizard and pool management for pi-ultra-messenger.
+ * Setup wizard and pool management for pi-messenger-swarm.
  *
  * Interactive and non-interactive configuration of worker pools,
  * model discovery validation, and safe project config write.
@@ -145,7 +145,7 @@ export async function setupInteractive(cwd: string): Promise<{ config: Superviso
   const ask = (q: string): Promise<string> => new Promise((resolve) => rl.question(q, resolve));
 
   const inventory = getModelInventory();
-  console.log('\npi-ultra-messenger setup');
+  console.log('\npi-messenger-swarm setup');
   console.log(`Project: ${cwd}`);
   console.log(`AGENTS.md: ${existsSync(path.join(cwd, 'AGENTS.md')) ? 'found' : 'not found'}`);
   console.log(`Pi models: ${inventory.length} visible\n`);
@@ -212,7 +212,7 @@ export async function setupInteractive(cwd: string): Promise<{ config: Superviso
   writeProjectConfig(cwd, { supervisor, maxConcurrentSpawns: maxConcurrent });
 
   if (shouldStart) {
-    console.log('\nStarting supervisor... (use "pi-ultra-messenger supervisor start" after this setup)');
+    console.log('\nStarting supervisor... (use "pi-messenger-swarm supervisor start" after this setup)');
   }
 
   console.log('\nConfiguration written to .pi/pi-messenger.json');

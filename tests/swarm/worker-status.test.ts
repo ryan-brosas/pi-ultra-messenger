@@ -208,4 +208,48 @@ describe('worker status telemetry', () => {
     expect(found!.currentBeadId).toBe('br-99');
     expect(found!.statusMessage).toBe('Running tests');
   });
+
+  it('forwards agentMailName from --agent-name / PI_AGENT_NAME', async () => {
+    const cwd = createTempCwd();
+    const dirs = createDirs(cwd);
+    const state = createState();
+    const ctx = createMockContext(cwd);
+    const proc = new FakeProcess();
+    spawnMock.mockReturnValue(proc as unknown);
+
+    const agent = spawnSubagent(cwd, { role: 'Worker', objective: 'Test' }, 'test-session');
+
+    const res = await executeAction(
+      'worker.status',
+      { id: agent.id, phase: 'coordinating', name: 'MyAgentName' },
+      state,
+      dirs,
+      ctx,
+      () => {},
+      () => {},
+      () => {},
+    );
+
+    expect(res.details?.agent.agentMailName).toBe('MyAgentName');
+  });
+
+  it('worker protocol prompt contains worker status instructions', () => {
+    const cwd = createTempCwd();
+    const proc = new FakeProcess();
+    spawnMock.mockReturnValue(proc as unknown);
+
+    spawnSubagent(cwd, { role: 'Worker', objective: 'Test' }, 'test-session');
+
+    const callArgs = spawnMock.mock.calls[0];
+    const args = callArgs[1] as string[];
+    const promptFileIdx = args.indexOf('--append-system-prompt');
+    expect(promptFileIdx).toBeGreaterThan(-1);
+    const promptPath = args[promptFileIdx + 1];
+    const promptContent = fs.readFileSync(promptPath, 'utf-8');
+
+    expect(promptContent).toContain('worker status');
+    expect(promptContent).toContain('PI_SWARM_SPAWN_ID');
+    expect(promptContent).toContain('--phase');
+    expect(promptContent).toContain('--bead');
+  });
 });

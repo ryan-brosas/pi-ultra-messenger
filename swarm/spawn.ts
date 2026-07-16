@@ -180,9 +180,13 @@ function buildSwarmProtocol(): string {
     '   Announce the work in the relevant Agent Mail thread.',
     '4. Implement the assigned work completely, following AGENTS.md for checks, self-review,',
     '   UBS/RCH/DCG, Git commit/push, reservation release, and handoff.',
-    '5. Be concise, evidence-based, and stay in role.',
-    '6. After any context compaction, reread the root AGENTS.md before continuing.',
-    '7. EXIT IMMEDIATELY after completing the work: bash({ command: "exit 0" }).',
+    '5. Report milestone progress via worker status:',
+    '   pi-messenger-swarm worker status --phase implementing --bead <id> "what you just did"',
+    '   The --spawn-id is auto-set from PI_SWARM_SPAWN_ID. Call this every 3-5 tool calls',
+    '   or at significant milestones so the operator can see what you are doing.',
+    '6. Be concise, evidence-based, and stay in role.',
+    '7. After any context compaction, reread the root AGENTS.md before continuing.',
+    '8. EXIT IMMEDIATELY after completing the work: bash({ command: "exit 0" }).',
     '   Do not stay alive after your mission is complete. Do not idle or monitor.',
   ].join('\n');
 }
