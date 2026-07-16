@@ -47,11 +47,11 @@ jobs:
       - name: Quality gate — typecheck
         run: pnpm typecheck
 
+      - name: Build dist
+        run: pnpm build
+
       - name: Quality gate — tests
         run: pnpm test
-
-      - name: Quality gate — build
-        run: pnpm build
 
       - name: Publish to npm
         run: npm publish --access public
