@@ -2,7 +2,7 @@
 
 **Continuous Pi worker pool for the Agent Flywheel workflow**
 
-A fork of [`pi-messenger-swarm`](https://github.com/monotykamary/pi-messenger-swarm) by [Tom X Nguyen (@monotykamary)](https://github.com/monotykamary), customized into a continuous Pi worker pool.
+A fork of [`pi-messenger-swarm`](https://github.com/monotykamary/pi-messenger-swarm) by [Tom (@monotykamary)](https://github.com/monotykamary), customized into a continuous Pi worker pool.
 Configure Pi-visible worker pools, start the supervisor, and it continuously
 replenishes lightweight Pi agents that execute the existing Agent Flywheel
 workflow — without manually farming terminal panes.
