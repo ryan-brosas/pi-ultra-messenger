@@ -17,6 +17,7 @@ import {
   cleanupExitedSpawned,
   reconcileSpawnedAgents,
   listSpawned,
+  listSpawnedHistory,
   spawnSubagent,
 } from './spawn.js';
 import type { SpawnedAgent } from './types.js';
@@ -79,6 +80,24 @@ export function readReadyBeads(cwd: string, limit = 100): ReadyBead[] {
     return normalizeReadyBeads(JSON.parse(output));
   } catch {
     return [];
+  }
+}
+
+/**
+ * Check if there are in-progress beads via `br list --status in_progress --json` (read-only).
+ */
+function hasInProgressBeads(cwd: string): boolean {
+  try {
+    const output = execSync('RUST_LOG=error br list --status in_progress --json', {
+      cwd,
+      encoding: 'utf-8',
+      timeout: 10_000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const parsed = JSON.parse(output);
+    return Array.isArray(parsed) && parsed.length > 0;
+  } catch {
+    return false;
   }
 }
 
@@ -244,11 +263,19 @@ export class ProjectSupervisor {
     const config = loadConfig(this.cwd);
     this.snapshot.lastTickAt = new Date().toISOString();
 
-    if (!config.supervisor.enabled || config.supervisor.paused) {
+    if (config.supervisor.enabled && !config.supervisor.paused) {
+      await this.refill(config);
+    } else {
       this.recordIdle(config.supervisor.paused ? 'paused' : 'disabled');
-      return;
     }
 
+    // Coordinator trigger runs after every tick — including early returns
+    // from refill (no ready beads, capacity full, etc.). Uses full spawn
+    // history (including failed) and real in-progress bead state.
+    await this.maybeRunIntervalCoordinator(config);
+  }
+
+  private async refill(config: MessengerConfig): Promise<void> {
     const running = listProjectRunningSpawns(this.cwd);
     if (running.length >= config.maxConcurrentSpawns) {
       this.recordIdle('capacity_full');
@@ -262,7 +289,6 @@ export class ProjectSupervisor {
       return;
     }
 
-    // Re-read config and occupancy after the br call
     const freshConfig = loadConfig(this.cwd);
     if (!freshConfig.supervisor.enabled || freshConfig.supervisor.paused) {
       this.recordIdle(freshConfig.supervisor.paused ? 'paused' : 'disabled');
@@ -276,7 +302,6 @@ export class ProjectSupervisor {
       return;
     }
 
-    // Count workers without a reported currentBeadId as pending selectors
     const pendingSelectors = freshRunning.filter(
       (w) => !w.poolId && w.status === 'running',
     ).length;
@@ -293,7 +318,6 @@ export class ProjectSupervisor {
       return;
     }
 
-    const unavailablePools = enabledPools.filter((p) => !p.modelAvailable);
     if (enabledPools.every((p) => !p.modelAvailable)) {
       this.recordIdle('model_unavailable');
       return;
@@ -320,37 +344,45 @@ export class ProjectSupervisor {
 
     this.snapshot.lastSpawnedCount = spawned;
     this.snapshot.lastReason = spawned > 0 ? `spawned ${spawned} worker(s)` : 'no_deficit';
-
-    // Optional interval coordinator trigger
-    await this.maybeRunIntervalCoordinator(freshConfig, freshRunning, ready.length);
   }
 
   private lastCoordinatorRunAt = 0;
-  private coordinatorActive = false;
+  private coordinatorSpawnId: string | null = null;
 
-  private async maybeRunIntervalCoordinator(
-    config: MessengerConfig,
-    running: SpawnedAgent[],
-    readyCount: number,
-  ): Promise<void> {
+  private async maybeRunIntervalCoordinator(config: MessengerConfig): Promise<void> {
     const coord = config.supervisor.coordinator;
     if (!coord.enabled || coord.mode !== 'interval') return;
-    if (this.coordinatorActive) return;
+
+    // Skip if a coordinator is still running (guard retained for child lifetime)
+    if (this.coordinatorSpawnId) {
+      const history = listSpawnedHistory(this.cwd, SUPERVISOR_SESSION_ID);
+      const coord = history.find((a) => a.id === this.coordinatorSpawnId);
+      if (coord && coord.status === 'running') return;
+      this.coordinatorSpawnId = null;
+    }
 
     const intervalMs = (coord.intervalMinutes ?? 5) * 60 * 1000;
     const now = Date.now();
     if (now - this.lastCoordinatorRunAt < intervalMs) return;
 
-    // Trigger conditions (§19.6): only run when at least one is true
-    const hasFailedWorker = running.some((w) => w.status === 'failed');
-    const hasNoReadyButInProgress = readyCount === 0 && running.length > 0;
+    // Trigger conditions (§19.6): at least one must be true.
+    // Uses full spawn history (not just running) for failed-worker check,
+    // and real br in-progress state for the no-ready-but-in-progress check.
+    const fullHistory = listSpawnedHistory(this.cwd, SUPERVISOR_SESSION_ID);
+    const hasFailedWorker = fullHistory.some(
+      (w) => w.status === 'failed' && w.role !== 'Coordinator',
+    );
+    const hasRunningWorkers = fullHistory.some((w) => w.status === 'running');
+    const hasInProgress = hasInProgressBeads(this.cwd);
+    const readyCount = this.snapshot.lastReadyCount ?? 0;
+    const hasNoReadyButInProgress = readyCount === 0 && hasRunningWorkers && hasInProgress;
+
     if (!hasFailedWorker && !hasNoReadyButInProgress) return;
 
-    this.coordinatorActive = true;
     this.lastCoordinatorRunAt = now;
     try {
       const model = coord.model.mode === 'exact' ? coord.model.model : undefined;
-      spawnSubagent(
+      const record = spawnSubagent(
         this.cwd,
         {
           role: 'Coordinator',
@@ -361,10 +393,9 @@ export class ProjectSupervisor {
         SUPERVISOR_SESSION_ID,
         undefined,
       );
+      this.coordinatorSpawnId = record.id;
     } catch {
       // Coordinator failure is non-fatal — does not pause refill
-    } finally {
-      this.coordinatorActive = false;
     }
   }
 
