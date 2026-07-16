@@ -146,6 +146,10 @@ AGENTS.md directly.
 
 Config locations: `.pi/pi-messenger.json` (project), `~/.pi/agent/pi-messenger.json` (global).
 
+## Future Improvements
+
+- **Enrich-first flow**: New bead → enricher (Sol medium) → supervisor re-check → pool worker. Currently the goal refiner runs in `manual` mode, is suggestion-only (posts `br comments` on beads), and never gates refill. It cannot modify bead content, split beads, reprioritize, or add dependencies — only comment. An enrich-first pipeline would require: (1) routing ready beads through enrichment before worker allocation, (2) giving the refiner write access to split/reprioritize/relink beads, (3) a re-check mechanism after enrichment completes, and (4) preserving the "never block worker allocation" design constraint (non-blocking enrichment with concurrent worker allocation).
+
 ## License
 
 MIT
