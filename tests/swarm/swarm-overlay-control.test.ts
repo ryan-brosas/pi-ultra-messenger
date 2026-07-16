@@ -127,6 +127,25 @@ describe('swarm overlay control layer', () => {
     expect(render(o)).toContain('→ stop…');
   });
 
+  it('ro two-key sequence toggles view-only (alias for v)', () => {
+    const o = newOverlay();
+    o.handleInput('r');
+    o.handleInput('o');
+    expect(render(o)).toContain('[view-only]');
+    o.handleInput('r');
+    o.handleInput('o');
+    expect(render(o)).not.toContain('[view-only]');
+  });
+
+  it('r then a non-o keystroke falls through (does not toggle, key still works)', () => {
+    const o = newOverlay();
+    o.handleInput('r');
+    o.handleInput('3'); // Pools panel, not 'o' — should not toggle view-only
+    const out = render(o);
+    expect(out).not.toContain('[view-only]');
+    expect(out).toContain('## Worker Pools');
+  });
+
   it('renders pool fill gauges with block characters', () => {
     const o = newOverlay();
     o.handleInput('3'); // Pools panel

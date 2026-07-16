@@ -49,6 +49,7 @@ export class SwarmOverlay implements Component, Focusable {
   // Control-plane state
   private viewOnly = false;
   private pendingConfirm: string | null = null;
+  private pendingTwoKey: string | null = null;
   private lastControlMsg = '';
   private tickCount = 0;
   private harnessUp = true;
@@ -186,6 +187,23 @@ export class SwarmOverlay implements Component, Focusable {
       const workers = listSpawned(this.cwd, SUPERVISOR_SESSION, true);
       if (data === 'j' && this.selectedWorkerIndex < workers.length - 1) this.selectedWorkerIndex++;
       if (data === 'k' && this.selectedWorkerIndex > 0) this.selectedWorkerIndex--;
+      return;
+    }
+
+    // ro (two-key) aliases v for view-only toggle, per the control-plane plan.
+    // 'r' arms the sequence; the next keystroke toggles only if it is 'o',
+    // otherwise it is processed normally (so 'r' then 'k' still navigates).
+    if (this.pendingTwoKey === 'ro') {
+      this.pendingTwoKey = null;
+      if (data === 'o') {
+        this.viewOnly = !this.viewOnly;
+        this.lastControlMsg = this.viewOnly ? 'view-only on' : 'view-only off';
+        return;
+      }
+      // not 'o' — fall through and handle this keystroke normally
+    }
+    if (data === 'r') {
+      this.pendingTwoKey = 'ro';
       return;
     }
 
