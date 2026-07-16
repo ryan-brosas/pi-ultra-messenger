@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 import type { MessengerState, Dirs, AgentMailMessage, NameThemeConfig } from '../lib.js';
 import { loadConfig, type MessengerConfig } from '../config.js';
 import { executeAction, type RouterConfig } from '../router.js';
-import { ProjectSupervisor } from '../swarm/supervisor.js';
+import { ProjectSupervisor, type ProjectSupervisorSnapshot } from '../swarm/supervisor.js';
 import {
   normalizeChannelId,
   ensureDefaultNamedChannels,
@@ -43,6 +43,7 @@ import {
   reconcileAndRestoreOrphans,
   clearPersistedRuntimes,
   getRunningSpawnCount,
+  appendControlAudit,
 } from '../swarm/spawn.js';
 
 function getMessengerDirs(cwd?: string): Dirs {
@@ -128,12 +129,99 @@ function routerConfigForCwd(cwd: string): RouterConfig {
 function writeSupervisorConfig(cwd: string, patch: Record<string, unknown>): void {
   const configPath = join(cwd, '.pi', 'pi-messenger.json');
   let existing: Record<string, unknown> = {};
-  try { existing = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch { /* fresh */ }
+  try {
+    existing = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  } catch {
+    /* fresh */
+  }
   const supervisor = (existing.supervisor ?? {}) as Record<string, unknown>;
   Object.assign(supervisor, patch);
   existing.supervisor = supervisor;
   fs.mkdirSync(join(cwd, '.pi'), { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify(existing, null, 2) + '\n', 'utf-8');
+}
+
+/**
+ * Shared supervisor lifecycle logic used by both /supervisor and /control so
+ * the CLI and the /swarm overlay stay consistent. Returns a snapshot plus the
+ * resolved op name. Never throws — unknown ops return { ok:false, error }.
+ */
+function applySupervisorOp(
+  op: string | undefined,
+  projectCwd: string
+): { ok: boolean; snapshot?: ProjectSupervisorSnapshot; error?: string; op?: string } {
+  const fallback = (): ProjectSupervisorSnapshot => ({
+    cwd: projectCwd,
+    enabled: false,
+    paused: false,
+    tickCount: 0,
+  });
+  // After a config write, reflect the truthful enabled/paused in the
+  // returned snapshot so the overlay re-renders from truth, not from the
+  // last tick's (stale) in-memory snapshot.
+  const snapshotWithConfig = (
+    sup: { getSnapshot(): ProjectSupervisorSnapshot } | undefined
+  ): ProjectSupervisorSnapshot => {
+    const base = sup ? sup.getSnapshot() : fallback();
+    let enabled = base.enabled;
+    let paused = base.paused;
+    try {
+      const cfg = loadConfig(projectCwd).supervisor;
+      enabled = cfg.enabled;
+      paused = cfg.paused;
+    } catch {
+      // keep base if config read fails
+    }
+    return { ...base, enabled, paused };
+  };
+
+  if (op === 'start' || op === 'resume') {
+    let sup = supervisors.get(projectCwd);
+    if (!sup) {
+      sup = new ProjectSupervisor(projectCwd);
+      supervisors.set(projectCwd, sup);
+    }
+    writeSupervisorConfig(projectCwd, { enabled: true, paused: false });
+    sup.start();
+    serverLog(`supervisor ${op} for ${projectCwd}`);
+    return { ok: true, op, snapshot: snapshotWithConfig(sup) };
+  }
+  if (op === 'stop') {
+    const sup = supervisors.get(projectCwd);
+    if (sup) sup.stop();
+    writeSupervisorConfig(projectCwd, { enabled: false });
+    serverLog(`supervisor stop for ${projectCwd}`);
+    return { ok: true, op, snapshot: snapshotWithConfig(sup) };
+  }
+  if (op === 'pause') {
+    const sup = supervisors.get(projectCwd);
+    writeSupervisorConfig(projectCwd, { paused: true });
+    serverLog(`supervisor pause for ${projectCwd}`);
+    return { ok: true, op, snapshot: snapshotWithConfig(sup) };
+  }
+  if (op === 'status') {
+    const sup = supervisors.get(projectCwd);
+    return { ok: true, op, snapshot: snapshotWithConfig(sup) };
+  }
+  return { ok: false, error: `unknown supervisor op: ${op}` };
+}
+
+/**
+ * Serializable supervisor config snapshot returned to the /swarm overlay so it
+ * re-renders from truth after a control op, not from a local guess.
+ */
+function supervisorConfigSnapshot(cwd: string): Record<string, unknown> {
+  const config = loadConfig(cwd);
+  return {
+    enabled: config.supervisor.enabled,
+    paused: config.supervisor.paused,
+    pollIntervalMs: config.supervisor.pollIntervalMs,
+    maxStartsPerTick: config.supervisor.maxStartsPerTick,
+    maxConcurrentSpawns: config.maxConcurrentSpawns,
+    workerPools: config.supervisor.workerPools,
+    coordinator: config.supervisor.coordinator,
+    goalRefiner: config.supervisor.goalRefiner,
+  };
 }
 
 interface RegistrationFile {
@@ -508,47 +596,113 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
   // Supervisor lifecycle endpoints
   if (req.method === 'POST' && url.pathname === '/supervisor') {
     let body: string;
-    try { body = await readBody(req); } catch { res.writeHead(400, TEXT_JSON); res.end(JSON.stringify({ ok: false, error: 'failed to read body' })); return; }
+    try {
+      body = await readBody(req);
+    } catch {
+      res.writeHead(400, TEXT_JSON);
+      res.end(JSON.stringify({ ok: false, error: 'failed to read body' }));
+      return;
+    }
     let params: Record<string, unknown>;
-    try { params = JSON.parse(body); } catch { res.writeHead(400, TEXT_JSON); res.end(JSON.stringify({ ok: false, error: 'invalid JSON' })); return; }
+    try {
+      params = JSON.parse(body);
+    } catch {
+      res.writeHead(400, TEXT_JSON);
+      res.end(JSON.stringify({ ok: false, error: 'invalid JSON' }));
+      return;
+    }
     const op = params.op as string | undefined;
-    const projectCwd = normalizeCwd((params.cwd as string) || process.env.PI_MESSENGER_CWD || process.cwd());
+    const projectCwd = normalizeCwd(
+      (params.cwd as string) || process.env.PI_MESSENGER_CWD || process.cwd()
+    );
 
-    if (op === 'start' || op === 'resume') {
-      let sup = supervisors.get(projectCwd);
-      if (!sup) { sup = new ProjectSupervisor(projectCwd); supervisors.set(projectCwd, sup); }
-      // Write enabled=true to config then start
-      writeSupervisorConfig(projectCwd, { enabled: true, paused: false });
-      sup.start();
-      serverLog(`supervisor ${op} for ${projectCwd}`);
-      res.writeHead(200, TEXT_JSON); res.end(JSON.stringify({ ok: true, op, snapshot: sup.getSnapshot() }));
+    const result = applySupervisorOp(op, projectCwd);
+    if (!result.ok) {
+      res.writeHead(400, TEXT_JSON);
+      res.end(JSON.stringify({ ok: false, error: result.error }));
       return;
     }
-    if (op === 'stop') {
-      const sup = supervisors.get(projectCwd);
-      if (sup) sup.stop();
-      writeSupervisorConfig(projectCwd, { enabled: false });
-      serverLog(`supervisor stop for ${projectCwd}`);
-      res.writeHead(200, TEXT_JSON); res.end(JSON.stringify({ ok: true, op, snapshot: sup?.getSnapshot() }));
-      return;
-    }
-    if (op === 'pause') {
-      const sup = supervisors.get(projectCwd);
-      writeSupervisorConfig(projectCwd, { paused: true });
-      serverLog(`supervisor pause for ${projectCwd}`);
-      res.writeHead(200, TEXT_JSON); res.end(JSON.stringify({ ok: true, op, snapshot: sup?.getSnapshot() }));
-      return;
-    }
-    if (op === 'status') {
-      const sup = supervisors.get(projectCwd);
-      const snapshot = sup?.getSnapshot() ?? { cwd: projectCwd, enabled: false, paused: false };
-      res.writeHead(200, TEXT_JSON); res.end(JSON.stringify({ ok: true, snapshot }));
-      return;
-    }
-    res.writeHead(400, TEXT_JSON); res.end(JSON.stringify({ ok: false, error: `unknown supervisor op: ${op}` }));
+    res.writeHead(200, TEXT_JSON);
+    res.end(JSON.stringify({ ok: true, op, snapshot: result.snapshot }));
     return;
   }
 
+  // Control-plane endpoint — the single mutation authority used by the
+  // /swarm overlay (and available to the CLI). Lifecycle ops route through the
+  // same applySupervisorOp helper as /supervisor so CLI and UI stay consistent.
+  if (req.method === 'POST' && url.pathname === '/control') {
+    let body: string;
+    try {
+      body = await readBody(req);
+    } catch {
+      res.writeHead(400, TEXT_JSON);
+      res.end(JSON.stringify({ ok: false, error: 'failed to read body' }));
+      return;
+    }
+    let params: Record<string, unknown>;
+    try {
+      params = JSON.parse(body);
+    } catch {
+      res.writeHead(400, TEXT_JSON);
+      res.end(JSON.stringify({ ok: false, error: 'invalid JSON' }));
+      return;
+    }
+    const op = params.op as string | undefined;
+    const projectCwd = normalizeCwd(
+      (params.cwd as string) || process.env.PI_MESSENGER_CWD || process.cwd()
+    );
+    const source = params.source === 'cli' ? 'cli' : 'ui';
+
+    if (op === 'swarm.start') {
+      // Bootstrap: ensure supervisor enabled + runtime started.
+      const r = applySupervisorOp('start', projectCwd);
+      appendControlAudit(projectCwd, 'swarm.start', source, r.ok, r.error);
+      res.writeHead(200, TEXT_JSON);
+      res.end(
+        JSON.stringify({
+          ok: r.ok,
+          op,
+          snapshot: r.snapshot,
+          configSnapshot: supervisorConfigSnapshot(projectCwd),
+        })
+      );
+      return;
+    }
+
+    if (op === 'pause' || op === 'resume' || op === 'stop' || op === 'start') {
+      const r = applySupervisorOp(op, projectCwd);
+      appendControlAudit(projectCwd, op ?? 'unknown', source, r.ok, r.error);
+      res.writeHead(200, TEXT_JSON);
+      res.end(
+        JSON.stringify({
+          ok: r.ok,
+          op,
+          snapshot: r.snapshot,
+          configSnapshot: supervisorConfigSnapshot(projectCwd),
+        })
+      );
+      return;
+    }
+
+    if (op === 'status') {
+      const r = applySupervisorOp('status', projectCwd);
+      res.writeHead(200, TEXT_JSON);
+      res.end(
+        JSON.stringify({
+          ok: r.ok,
+          op,
+          snapshot: r.snapshot,
+          configSnapshot: supervisorConfigSnapshot(projectCwd),
+        })
+      );
+      return;
+    }
+
+    appendControlAudit(projectCwd, op ?? 'unknown', source, false, 'unknown op');
+    res.writeHead(400, TEXT_JSON);
+    res.end(JSON.stringify({ ok: false, error: `unknown control op: ${op}` }));
+    return;
+  }
 
   // Action endpoint
   if (req.method === 'POST' && url.pathname === '/action') {

@@ -68,6 +68,7 @@ export interface ProjectSupervisorSnapshot {
   paused: boolean;
   lastTickAt?: string;
   nextTickAt?: string;
+  tickCount: number;
   lastReadyCount?: number;
   lastQualityReadyCount?: number;
   lastThinBeadCount?: number;
@@ -434,6 +435,7 @@ export class ProjectSupervisor {
       cwd,
       enabled: false,
       paused: false,
+      tickCount: 0,
     };
   }
 
@@ -476,6 +478,7 @@ export class ProjectSupervisor {
   private async tick(reason: string): Promise<void> {
     const config = loadConfig(this.cwd);
     this.snapshot.lastTickAt = new Date().toISOString();
+    this.snapshot.tickCount = (this.snapshot.tickCount ?? 0) + 1;
     this.snapshot.enabled = config.supervisor.enabled;
     this.snapshot.paused = config.supervisor.paused;
 

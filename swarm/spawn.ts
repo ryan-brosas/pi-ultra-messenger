@@ -72,6 +72,67 @@ function appendEvent(cwd: string, sessionId: string, event: SpawnEvent): void {
 }
 
 /**
+ * Append a control-plane audit event (UI/CLI-originated supervisor or pool
+ * mutations) to `.pi/messenger/control-audit.jsonl`. The overlay Activity panel
+ * can render this trail; CLI and UI share one audit history.
+ */
+export interface ControlAuditEvent {
+  id: string;
+  type: 'control';
+  timestamp: string;
+  op: string;
+  source: 'ui' | 'cli';
+  cwd: string;
+  ok: boolean;
+  detail?: string;
+}
+
+export function appendControlAudit(
+  cwd: string,
+  op: string,
+  source: 'ui' | 'cli',
+  ok: boolean,
+  detail?: string
+): void {
+  const dir = path.join(cwd, '.pi', 'messenger');
+  ensureDir(dir);
+  const filePath = path.join(dir, 'control-audit.jsonl');
+  const event: ControlAuditEvent = {
+    id: randomUUID().slice(0, 8),
+    type: 'control',
+    timestamp: new Date().toISOString(),
+    op,
+    source,
+    cwd,
+    ok,
+    detail,
+  };
+  fs.appendFileSync(filePath, JSON.stringify(event) + '\n', 'utf-8');
+}
+
+/**
+ * Read control-audit events (newest first) for the Activity panel.
+ */
+export function listControlAudit(cwd: string, limit = 50): ControlAuditEvent[] {
+  const filePath = path.join(cwd, '.pi', 'messenger', 'control-audit.jsonl');
+  if (!fs.existsSync(filePath)) return [];
+  const lines = fs
+    .readFileSync(filePath, 'utf-8')
+    .split('\n')
+    .filter((l) => l.trim());
+  const events: ControlAuditEvent[] = [];
+  for (const line of lines) {
+    try {
+      const ev = JSON.parse(line) as ControlAuditEvent;
+      if (ev && ev.type === 'control') events.push(ev);
+    } catch {
+      // skip malformed
+    }
+  }
+  return events.reverse().slice(0, limit);
+}
+
+/**
  * Replay events to build current state of all agents.
  */
 export function loadSpawnedAgents(cwd: string, sessionId: string): SpawnedAgent[] {
@@ -229,7 +290,7 @@ function buildPrompt(request: SpawnRequest): string {
     '- Objective addressed with concrete output.',
     '- All work committed and pushed following AGENTS.md Git rules.',
     '- File reservations released via Agent Mail before exit.',
-    '- EXIT IMMEDIATELY after completion: bash({ command: "exit 0" }).',
+    '- EXIT IMMEDIATELY after completion: bash({ command: "exit 0" }).'
   );
 
   return lines.join('\n');
@@ -506,7 +567,8 @@ export function spawnSubagent(
     stderr: '',
   };
 
-  const effectiveModel = request.model && request.model !== 'inherit' ? request.model : agentFileModel;
+  const effectiveModel =
+    request.model && request.model !== 'inherit' ? request.model : agentFileModel;
   const args = createArgs(spawnState, effectiveModel);
   const promptTmpDir = (args as any)._promptTmpDir as string | null;
 
@@ -563,7 +625,7 @@ export function listSpawnedHistory(cwd: string, sessionId: string): SpawnedAgent
 export function updateSpawnStatus(
   cwd: string,
   id: string,
-  patch: Partial<Pick<SpawnedAgent, 'phase' | 'currentBeadId' | 'statusMessage' | 'agentMailName'>>,
+  patch: Partial<Pick<SpawnedAgent, 'phase' | 'currentBeadId' | 'statusMessage' | 'agentMailName'>>
 ): SpawnedAgent | null {
   const runtime = runtimes.get(id);
   if (!runtime || runtime.record.cwd !== cwd) return null;
