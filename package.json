@@ -3,15 +3,15 @@
   "version": "0.25.22",
   "description": "Swarm-first multi-agent messaging and task orchestration extension for Pi",
   "type": "module",
-  "author": "Tom X Nguyen",
+  "author": "Tom X Nguyen (fork by Ryan Brosas)",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/monotykamary/pi-messenger-swarm.git"
+    "url": "git+https://github.com/ryan-brosas/pi-ultra-messenger.git"
   },
-  "homepage": "https://github.com/monotykamary/pi-messenger-swarm#readme",
+  "homepage": "https://github.com/ryan-brosas/pi-ultra-messenger#readme",
   "bugs": {
-    "url": "https://github.com/monotykamary/pi-messenger-swarm/issues"
+    "url": "https://github.com/ryan-brosas/pi-ultra-messenger/issues"
   },
   "keywords": [
     "pi-package",
