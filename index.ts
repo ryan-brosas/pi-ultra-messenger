@@ -297,6 +297,18 @@ export default function piMessengerExtension(pi: ExtensionAPI) {
         lines.push('');
       }
 
+      // Activity (recent worker events)
+      const recentHistory = workers.slice(0, 5);
+      if (recentHistory.length > 0) {
+        lines.push('## Activity');
+        for (const w of recentHistory) {
+          const status = w.status === 'completed' ? '✅' : w.status === 'failed' ? '❌' : w.status === 'stopped' ? '⏹' : '🔄';
+          const ended = w.endedAt ? ` · ended ${new Date(w.endedAt).toLocaleTimeString()}` : '';
+          lines.push(`  ${status} ${w.name} (${w.role})${ended}`);
+        }
+        lines.push('');
+      }
+
       // Pools
       if (config.supervisor.workerPools.length > 0) {
         lines.push('## Pools');

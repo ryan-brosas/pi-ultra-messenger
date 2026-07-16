@@ -1,16 +1,16 @@
 {
-  "name": "pi-messenger-swarm",
+  "name": "pi-ultra-messenger",
   "version": "0.25.20",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
-      "name": "pi-messenger-swarm",
+      "name": "pi-ultra-messenger",
       "version": "0.25.20",
       "hasInstallScript": true,
       "license": "MIT",
       "bin": {
-        "pi-messenger-swarm": "dist/harness/cli.js"
+        "pi-ultra-messenger": "dist/harness/cli.js"
       },
       "devDependencies": {
         "@commitlint/cli": "21.0.1",
