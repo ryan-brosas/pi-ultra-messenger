@@ -3,7 +3,10 @@
   "version": "0.25.22",
   "description": "Swarm-first multi-agent messaging and task orchestration extension for Pi",
   "type": "module",
-  "author": "Tom X Nguyen (fork by Ryan Brosas)",
+  "author": "Ryan Brosas <https://github.com/ryan-brosas>",
+  "contributors": [
+    "Tom X Nguyen <https://github.com/monotykamary>"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

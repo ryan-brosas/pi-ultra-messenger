@@ -11,11 +11,12 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../config.js';
 import type { Dirs } from '../../lib.js';
 
 const roots = new Set<string>();
+let savedAgentDir: string | undefined;
 
 function createProject(name: string, config?: Record<string, unknown>): string {
   const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-messenger-restart-test-${name}-`));
@@ -36,6 +37,12 @@ function createMessengerDirs(cwd: string): Dirs {
   fs.mkdirSync(registry, { recursive: true });
   return { base, registry };
 }
+beforeEach(() => {
+  savedAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const isolatedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-agent-isolated-'));
+  roots.add(isolatedDir);
+  process.env.PI_CODING_AGENT_DIR = isolatedDir;
+});
 
 afterEach(() => {
   for (const root of roots) {
@@ -44,6 +51,11 @@ afterEach(() => {
     } catch {}
   }
   roots.clear();
+  if (savedAgentDir === undefined) {
+    delete process.env.PI_CODING_AGENT_DIR;
+  } else {
+    process.env.PI_CODING_AGENT_DIR = savedAgentDir;
+  }
 });
 
 describe('harness server soft restart', () => {
