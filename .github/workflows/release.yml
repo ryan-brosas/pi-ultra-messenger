@@ -1,14 +1,14 @@
 name: Release
 
 # Publishes to npm when a version tag (v*) is pushed, and can be manually
-# dispatched to publish an existing tag. Authenticates to npm via GitHub
-# Actions OpenID Connect (Trusted Publisher) — no NPM_TOKEN secret required.
-# The trust is configured on the npm package page: repo
-# ryan-brosas/pi-ultra-messenger, workflow release.yml, permission npm publish.
+# dispatched to publish an existing tag. Auth uses an npm **Granular** access
+# token stored in the NPM_TOKEN secret (granular tokens bypass 2FA, so CI
+# publishes without an OTP). Provenance is signed via GitHub OIDC
+# (id-token: write, below) — `--provenance` needs only that + a public repo.
 #
-# Requires workflow permission `id-token: write` (below). Do NOT set a
-# NODE_AUTH_TOKEN — setup-node derives npm auth from the OIDC token when
-# id-token: write is granted and no token env is provided.
+# Required secret: NPM_TOKEN — a npm **Granular** token (Read and write,
+# scoped to pi-ultra-messenger), NOT a classic "Publish" token (those require
+# an OTP when 2FA is on).
 
 on:
   push:
@@ -57,8 +57,7 @@ jobs:
       - name: Quality gate — tests
         run: pnpm test
 
-      - name: Diagnose OIDC npm identity
-        run: 'npm whoami || true'
-
       - name: Publish to npm
         run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

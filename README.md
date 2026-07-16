@@ -181,9 +181,10 @@ Releases are automated.
 - `Sync master` fast-forwards the legacy `master` branch to `main` on every
   push to `main` (no manual `git push origin main:master`).
 - `Release` builds, tests, and publishes to npm when a `v*` tag is pushed —
-  authenticating to npm via **GitHub OIDC (Trusted Publisher)**, so there is
-  no `NPM_TOKEN` secret to manage. It can also be run manually from the
-  Actions tab with a tag.
+  using the `NPM_TOKEN` repo secret, a npm **Granular** access token scoped to
+  this package (granular tokens bypass 2FA, so CI needs no OTP). Provenance is
+  signed via GitHub OIDC. It can also be run manually from the Actions tab
+  with a tag.
 
 One-command release (from a clean `main`):
 
@@ -191,9 +192,9 @@ One-command release (from a clean `main`):
 npm run release:push    # standard-version bumps+commits+tags, then pushes
 ```
 
-CI does the rest. The only setup is the npm Trusted Publisher (OIDC)
-link on the npm package page (repo, workflow `release.yml`, publish
-permission) — no npm token secret is required.
+CI does the rest. The only setup is the `NPM_TOKEN` secret — an npm
+**Granular** token (Read and write, scoped to `pi-ultra-messenger`). Avoid
+classic "Publish" tokens: they require an OTP when 2FA is on.
 
 ## Future Improvements
 
