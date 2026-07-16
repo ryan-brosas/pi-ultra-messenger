@@ -14,6 +14,7 @@ import { loadConfig } from '../config.js';
 import { listSpawned } from '../swarm/spawn.js';
 import { getLiveWorkers } from '../swarm/live-progress.js';
 import type { SpawnedAgent } from '../swarm/types.js';
+import type { ProjectSupervisorSnapshot } from '../swarm/supervisor.js';
 import * as fs from 'node:fs';
 import { join } from 'node:path';
 
@@ -45,6 +46,11 @@ export class SwarmOverlay implements Component, Focusable {
 
   private currentPanel: PanelName = 'overview';
   private selectedWorkerIndex = 0;
+  // §22.9 input modes (Enter detail / / search / ? help)
+  private detailMode = false;
+  private searchMode = false;
+  private searchQuery = '';
+  private helpMode = false;
   private cwd: string;
   // Control-plane state
   private viewOnly = false;
@@ -55,13 +61,28 @@ export class SwarmOverlay implements Component, Focusable {
   private harnessUp = true;
   private lastTickFetchAt = 0;
 
+  private animTimer: ReturnType<typeof setInterval> | null = null;
+  private lastSnapshot: ProjectSupervisorSnapshot | null = null;
+
   constructor(
-    _tui: TUI,
+    private tui: TUI,
     private theme: Theme,
     private done: (snapshot?: string) => void,
     private callbacks: SwarmOverlayCallbacks
   ) {
     this.cwd = process.cwd();
+  }
+
+  /** Drive the animated mascot while the overlay is focused. */
+  private startAnimation(): void {
+    if (this.animTimer) return;
+    this.animTimer = setInterval(() => this.tui.requestRender(), 100);
+  }
+
+  private stopAnimation(): void {
+    if (!this.animTimer) return;
+    clearInterval(this.animTimer);
+    this.animTimer = null;
   }
 
   // --- Control plane (HTTP to the harness, the single mutation authority) ---
@@ -98,9 +119,12 @@ export class SwarmOverlay implements Component, Focusable {
         body: JSON.stringify({ op: 'status', cwd: this.cwd, source: 'ui' }),
       });
       const json = (await res.json()) as {
-        snapshot?: { tickCount?: number };
+        snapshot?: ProjectSupervisorSnapshot;
       };
-      if (json.snapshot?.tickCount !== undefined) this.tickCount = json.snapshot.tickCount;
+      if (json.snapshot) {
+        this.lastSnapshot = json.snapshot;
+        if (json.snapshot.tickCount !== undefined) this.tickCount = json.snapshot.tickCount;
+      }
       this.harnessUp = true;
     } catch {
       this.harnessUp = false;
@@ -114,8 +138,125 @@ export class SwarmOverlay implements Component, Focusable {
     return '█'.repeat(cells) + '░'.repeat(width - cells);
   }
 
+  /** Animated bee mascot — truecolor block pixels, two wing frames. */
+  private renderBee(width: number, frame: 0 | 1): string[] {
+    const ESC = String.fromCharCode(27);
+    const RST = ESC + '[0m';
+    const color = (r: number, g: number, b: number) => ESC + '[38;2;' + r + ';' + g + ';' + b + 'm';
+    const Y = color(255, 196, 0);
+    const K = color(44, 44, 52);
+    const W = color(120, 220, 255);
+    const E = color(255, 255, 255);
+    const pal: Record<string, string> = { Y, K, W, E };
+    const wingsUp = [
+      '....WW......WW....',
+      '...WWWW....WWWW...',
+      '..WWYYYYYYYYYYWW..',
+      '.WWYYKYYYYYYKYYWW.',
+      'WWYYKYYEYYYKYYYEWW',
+      '.WWYYKYYYYYYKYYWW.',
+      '..WWYYYYYYYYYYWW..',
+      '...WWWWWWWWWWWW...',
+      '....WW......WW....',
+    ];
+    const wingsDown = [
+      '.....W......W.....',
+      '....WW......WW....',
+      '..WWYYYYYYYYYYWW..',
+      '.WWYYKYYYYYYKYYWW.',
+      'WWYYKYYEYYYKYYYEWW',
+      '.WWYYKYYYYYYKYYWW.',
+      '..WWYYYYYYYYYYWW..',
+      '....WW......WW....',
+      '.....W......W.....',
+    ];
+    const art = frame === 0 ? wingsUp : wingsDown;
+    const indent = Math.max(0, Math.floor((width - 18) / 2));
+    const pad = ' '.repeat(indent);
+    return art.map(
+      (row) =>
+        pad +
+        row
+          .split('')
+          .map((ch) => (ch === '.' ? ' ' : (pal[ch] ?? '') + '█' + RST))
+          .join('')
+    );
+  }
+
+  /** §22.12-style empty state: animated bee + dedicated copy. */
+  private renderEmptyState(lines: string[], w: number): void {
+    const frame = (Math.floor(Date.now() / 150) % 2) as 0 | 1;
+    lines.push('');
+    lines.push(...this.renderBee(w, frame));
+    lines.push('');
+    lines.push(truncateToWidth(this.theme.fg('accent', '  NO WORKERS — swarm is idle'), w));
+    lines.push(truncateToWidth(this.theme.fg('dim', '  Press S to start the supervisor.'), w));
+    lines.push(
+      truncateToWidth(
+        this.theme.fg('dim', '  Configure pools: pi-ultra-messenger setup   /messenger config'),
+        w
+      )
+    );
+  }
+
+  /** §22.3 — human label for why the pool is idle or capped. */
+  private idleLabel(config: MessengerConfig, running: SpawnedAgent[]): string {
+    if (!config.supervisor.enabled) return 'supervisor disabled — press S to start';
+    if (config.supervisor.paused) return 'paused — press P to resume';
+    if (running.length >= config.maxConcurrentSpawns) return 'capped — capacity full';
+    const reason = this.lastSnapshot?.lastReason;
+    if (reason) {
+      const map: Record<string, string> = {
+        disabled: 'supervisor disabled',
+        paused: 'paused',
+        capacity_full: 'capped — capacity full',
+        no_ready_beads: 'idle — no ready work',
+        awaiting_enrichment: 'awaiting enrichment',
+        quality_gate_failed: 'quality gate failed',
+        workers_selecting_work: 'workers selecting work',
+        model_unavailable: 'model unavailable',
+        no_enabled_pools: 'no enabled pools',
+        error: 'supervisor error',
+      };
+      const mapped = map[reason];
+      if (mapped) return mapped;
+      return reason;
+    }
+    return running.length > 0 ? 'running' : 'idle';
+  }
+
+  private fmtTime(iso?: string): string {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString();
+  }
+
+  /** §22.8 — responsive width tier. */
+  private tier(w: number): 'compact' | 'standard' | 'wide' {
+    if (w < 72) return 'compact';
+    if (w < 120) return 'standard';
+    return 'wide';
+  }
+
+  /** Truncate + right-pad a plain (non-ANSI) string to a fixed cell width. */
+  private pad(s: string, n: number): string {
+    const v = s.length > n ? s.slice(0, n) : s;
+    return v + ' '.repeat(Math.max(0, n - v.length));
+  }
+
+  private fmtElapsed(iso: string): string {
+    const ms = Math.max(0, Date.now() - new Date(iso).getTime());
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm' + (s % 60) + 's';
+    const h = Math.floor(m / 60);
+    return h + 'h' + (m % 60) + 'm';
+  }
+
   // --- Component interface ---
   render(width: number): string[] {
+    if (this.focused) this.startAnimation();
     void this.pollTick();
     const config = loadConfig(this.cwd);
     const workers = listSpawned(this.cwd, SUPERVISOR_SESSION, true);
@@ -129,14 +270,26 @@ export class SwarmOverlay implements Component, Focusable {
     lines.push(this.renderTabBar(w));
     lines.push(this.theme.fg('dim', '─'.repeat(w)));
 
-    const panelLines = this.renderPanel(
-      this.currentPanel,
-      w,
-      config,
-      workers,
-      running,
-      liveWorkers
-    );
+    let panelLines: string[];
+    if (this.helpMode) {
+      panelLines = this.renderHelp(w);
+    } else if (this.detailMode && this.currentPanel === 'workers') {
+      const vis = this.searchQuery
+        ? running.filter((wk) => this.matchesQuery(wk, this.searchQuery))
+        : running;
+      const sel = vis[Math.min(this.selectedWorkerIndex, Math.max(0, vis.length - 1))];
+      panelLines = sel
+        ? this.renderWorkerDetail(sel, liveWorkers, w)
+        : this.renderPanel(this.currentPanel, w, config, workers, running, liveWorkers);
+    } else {
+      panelLines = this.renderPanel(this.currentPanel, w, config, workers, running, liveWorkers);
+    }
+    if (this.searchMode && this.currentPanel === 'workers') {
+      panelLines = [
+        this.theme.fg('accent', '  /' + this.searchQuery + '_  (Esc cancel · Enter apply)'),
+        ...panelLines,
+      ];
+    }
     lines.push(...panelLines);
 
     const footerY = this.height - 2;
@@ -155,10 +308,12 @@ export class SwarmOverlay implements Component, Focusable {
 
   focus(): void {
     this.focused = true;
+    this.startAnimation();
   }
 
   blur(): void {
     this.focused = false;
+    this.stopAnimation();
   }
 
   isFocused(): boolean {
@@ -166,11 +321,81 @@ export class SwarmOverlay implements Component, Focusable {
   }
 
   handleInput(data: string): void {
+    // §22.9 — ? help overlay (modal; q falls through to close)
+    if (this.helpMode) {
+      if (data === '\x1b' || data === '?') {
+        this.helpMode = false;
+        return;
+      }
+      if (data !== 'q') return;
+      this.helpMode = false;
+    }
+
+    // §22.9 — / search input (modal)
+    if (this.searchMode) {
+      if (data === '\x1b') {
+        this.searchMode = false;
+        this.searchQuery = '';
+        return;
+      }
+      if (data === '\r' || data === '\n') {
+        this.searchMode = false; // keep query as active filter
+        return;
+      }
+      if (data === '\x7f' || data === '\b') {
+        this.searchQuery = this.searchQuery.slice(0, -1);
+        return;
+      }
+      if (data.length === 1 && data >= ' ') {
+        this.searchQuery += data;
+        return;
+      }
+      return;
+    }
+
+    // §22.9 — Esc closes detail before closing the overlay
+    if (this.detailMode && data === '\x1b') {
+      this.detailMode = false;
+      return;
+    }
+
+    // Enter — toggle worker detail (Workers panel)
+    if (data === '\r' || data === '\n') {
+      if (this.detailMode) {
+        this.detailMode = false;
+        return;
+      }
+      if (this.currentPanel === 'workers') {
+        const running = this.filteredRunning();
+        if (running.length > 0) {
+          this.selectedWorkerIndex = Math.min(this.selectedWorkerIndex, running.length - 1);
+          this.detailMode = true;
+        }
+      }
+      return;
+    }
+
+    // / — enter search (Workers panel)
+    if (data === '/' && this.currentPanel === 'workers') {
+      this.searchMode = true;
+      this.searchQuery = '';
+      return;
+    }
+
+    // ? — toggle help
+    if (data === '?') {
+      this.helpMode = !this.helpMode;
+      return;
+    }
+
     // Tab — cycle panels
     if (data === '\t') {
       const idx = PANELS.indexOf(this.currentPanel);
       this.currentPanel = PANELS[(idx + 1) % PANELS.length];
       this.selectedWorkerIndex = 0;
+      this.detailMode = false;
+      this.searchMode = false;
+      this.searchQuery = '';
       return;
     }
 
@@ -179,20 +404,24 @@ export class SwarmOverlay implements Component, Focusable {
     if (numKey >= 1 && numKey <= 5) {
       this.currentPanel = PANELS[numKey - 1];
       this.selectedWorkerIndex = 0;
+      this.detailMode = false;
+      this.searchMode = false;
+      this.searchQuery = '';
       return;
     }
 
-    // j/k — navigate worker list
+    // j/k — navigate the (filtered) worker list
     if (data === 'j' || data === 'k') {
-      const workers = listSpawned(this.cwd, SUPERVISOR_SESSION, true);
-      if (data === 'j' && this.selectedWorkerIndex < workers.length - 1) this.selectedWorkerIndex++;
-      if (data === 'k' && this.selectedWorkerIndex > 0) this.selectedWorkerIndex--;
+      if (this.currentPanel === 'workers') {
+        const running = this.filteredRunning();
+        if (data === 'j' && this.selectedWorkerIndex < running.length - 1)
+          this.selectedWorkerIndex++;
+        if (data === 'k' && this.selectedWorkerIndex > 0) this.selectedWorkerIndex--;
+      }
       return;
     }
 
     // ro (two-key) aliases v for view-only toggle, per the control-plane plan.
-    // 'r' arms the sequence; the next keystroke toggles only if it is 'o',
-    // otherwise it is processed normally (so 'r' then 'k' still navigates).
     if (this.pendingTwoKey === 'ro') {
       this.pendingTwoKey = null;
       if (data === 'o') {
@@ -200,7 +429,6 @@ export class SwarmOverlay implements Component, Focusable {
         this.lastControlMsg = this.viewOnly ? 'view-only on' : 'view-only off';
         return;
       }
-      // not 'o' — fall through and handle this keystroke normally
     }
     if (data === 'r') {
       this.pendingTwoKey = 'ro';
@@ -228,8 +456,7 @@ export class SwarmOverlay implements Component, Focusable {
       return;
     }
 
-    // Supervisor control keys (global; the supervisor is not panel-scoped).
-    // Mutating keys are disabled in view-only mode.
+    // Supervisor control keys (global; disabled in view-only mode)
     if (!this.viewOnly) {
       if (data === 'S') {
         this.lastControlMsg = 'swarm.start…';
@@ -254,6 +481,7 @@ export class SwarmOverlay implements Component, Focusable {
 
     // q or Esc — close
     if (data === 'q' || data === '\x1b') {
+      this.stopAnimation();
       const snapshot = this.renderSnapshot();
       this.done(snapshot);
       return;
@@ -271,7 +499,10 @@ export class SwarmOverlay implements Component, Focusable {
 
   private renderTitleBar(w: number): string {
     const beat = this.harnessUp ? (this.tickCount % 2 === 0 ? '●' : '○') : '○';
-    const title = 'pi-ultra-messenger Worker Pool';
+    const title =
+      this.tier(w) === 'compact'
+        ? 'Swarm Control Plane'
+        : 'pi-ultra-messenger · Swarm Control Plane';
     const right = `${beat}${this.viewOnly ? ' [view-only]' : ''}`;
     const pad = Math.max(1, w - title.length - right.length);
     return this.theme.fg('accent', title) + ' '.repeat(pad) + this.theme.fg('dim', right);
@@ -329,16 +560,35 @@ export class SwarmOverlay implements Component, Focusable {
       : 'OFF';
     const headroom = this.bar(running.length, config.maxConcurrentSpawns);
     const ctrlHints = this.viewOnly
-      ? this.theme.fg('dim', '  [view-only] mutating keys disabled (v to toggle)')
-      : this.theme.fg('dim', '  [S]tart [p]ause [P]resume [s]top · v:view-only');
+      ? truncateToWidth(
+          this.theme.fg('dim', '  [view-only] mutating keys disabled (v to toggle)'),
+          w
+        )
+      : truncateToWidth(
+          this.theme.fg('dim', '  [S]tart [p]ause [P]resume [s]top · v:view-only'),
+          w
+        );
     lines.push(
       '',
-      `Supervisor: ${supGlyph}${supLabel}  Workers ${running.length}/${config.maxConcurrentSpawns} ${headroom}`
+      truncateToWidth(
+        `Supervisor: ${supGlyph}${supLabel}  Workers ${running.length}/${config.maxConcurrentSpawns} ${headroom}`,
+        w
+      )
     );
     lines.push(ctrlHints);
     if (this.pendingConfirm)
       lines.push(this.theme.fg('accent', `  ${this.pendingConfirm} supervisor? [y/N]`));
     if (this.lastControlMsg) lines.push(this.theme.fg('dim', `  → ${this.lastControlMsg}`));
+
+    // §22.3 — why idle / why capped, ready count, tick cadence
+    lines.push('', '## Status');
+    lines.push(truncateToWidth(`  Why: ${this.idleLabel(config, running)}`, w));
+    const ready = this.lastSnapshot?.lastReadyCount;
+    lines.push(truncateToWidth(`  Ready: ${ready === undefined ? '—' : ready}`, w));
+    lines.push(truncateToWidth(`  Last tick: ${this.fmtTime(this.lastSnapshot?.lastTickAt)}`, w));
+    lines.push(truncateToWidth(`  Next tick: ${this.fmtTime(this.lastSnapshot?.nextTickAt)}`, w));
+    if (this.lastSnapshot?.lastError)
+      lines.push(truncateToWidth(this.theme.fg('error', `  ! ${this.lastSnapshot.lastError}`), w));
 
     lines.push('', '## Summary');
     lines.push(`  Running: ${running.length}`);
@@ -353,7 +603,7 @@ export class SwarmOverlay implements Component, Focusable {
       : 'disabled';
     lines.push(`  Supervisor: ${supStatus}`);
 
-    if (config.supervisor.workerPools.length > 0) {
+    if (config.supervisor.workerPools.length > 0 && this.tier(w) !== 'compact') {
       lines.push('', '## Pools');
       for (const pool of config.supervisor.workerPools) {
         const model = pool.model.mode === 'inherit' ? 'inherit' : pool.model.model;
@@ -363,7 +613,7 @@ export class SwarmOverlay implements Component, Focusable {
     }
 
     if (running.length === 0 && workers.length === 0) {
-      lines.push('', this.theme.fg('dim', '  No workers. Press S to start the swarm.'));
+      this.renderEmptyState(lines, w);
     }
 
     return lines;
@@ -381,27 +631,65 @@ export class SwarmOverlay implements Component, Focusable {
       return lines;
     }
 
+    // §22.4 — column layout, tier-aware. §22.10 — search filter.
+    const visible = this.searchQuery
+      ? running.filter((wk) => this.matchesQuery(wk, this.searchQuery))
+      : running;
+    if (visible.length === 0) {
+      lines.push('', this.theme.fg('dim', '  No workers match "' + this.searchQuery + '".'));
+      return lines;
+    }
+
+    const liveArr = Array.from(liveWorkers.values());
+    const liveByName = new Map<string, (typeof liveArr)[number]>();
+    for (const lw of liveArr) liveByName.set(lw.name, lw);
+
+    const t = this.tier(w);
+    const cols =
+      t === 'wide'
+        ? ['NAME', 'POOL', 'BEAD', 'PHASE', 'MODEL', 'ELAPSED', 'TKS']
+        : t === 'compact'
+          ? ['NAME', 'PHASE', 'ELAPSED']
+          : ['NAME', 'POOL', 'PHASE', 'MODEL', 'ELAPSED'];
+    const cw: Record<string, number> = {
+      NAME: t === 'compact' ? 14 : 16,
+      POOL: 10,
+      BEAD: 12,
+      PHASE: 12,
+      MODEL: 14,
+      ELAPSED: 7,
+      TKS: 5,
+    };
+    const cell = (s: string, c: string) => this.pad(s, cw[c] ?? 8);
+
     lines.push('', '## Running Workers');
-    for (let i = 0; i < running.length; i++) {
-      const worker = running[i];
-      const select = i === this.selectedWorkerIndex ? '▸ ' : '  ';
-      const phase = worker.phase ? ` · ${worker.phase}` : '';
-      const bead = worker.currentBeadId ? ` → ${worker.currentBeadId}` : '';
-      const model = worker.model ? ` [${worker.model}]` : '';
-      const msg = worker.statusMessage ? ` — ${worker.statusMessage}` : '';
-      lines.push(
-        truncateToWidth(`${select}${worker.name} (${worker.role})${model}${phase}${bead}${msg}`, w)
-      );
+    lines.push(this.theme.fg('dim', '    ' + cols.map((c) => cell(c, c)).join('  ')));
+    for (let i = 0; i < visible.length; i++) {
+      const worker = visible[i];
+      const sel = i === this.selectedWorkerIndex ? '▸' : ' ';
+      const sym = worker.status === 'running' ? '●' : '○';
+      const lw = liveByName.get(worker.name);
+      const vals: Record<string, string> = {
+        NAME: worker.name,
+        POOL: worker.poolId ?? '—',
+        BEAD: worker.currentBeadId ?? '—',
+        PHASE: worker.phase ?? '—',
+        MODEL: worker.model ?? '—',
+        ELAPSED: this.fmtElapsed(worker.startedAt),
+        TKS: lw?.progress?.tokens != null ? String(lw.progress.tokens) : '—',
+      };
+      const row = `${sel} ${sym} ` + cols.map((c) => cell(vals[c] ?? '—', c)).join('  ');
+      lines.push(truncateToWidth(row, w));
     }
 
     // Live workers (in-progress, not yet in spawned list)
-    const liveNames = new Set(running.map((w) => w.name));
-    const extraLive = Array.from(liveWorkers.values()).filter((lw) => !liveNames.has(lw.name));
+    const liveNames = new Set(running.map((wk) => wk.name));
+    const extraLive = liveArr.filter((lw) => !liveNames.has(lw.name));
     if (extraLive.length > 0) {
       lines.push('', '## Starting');
       for (const lw of extraLive.slice(0, 5)) {
         const activity = lw.progress.currentTool ? lw.progress.currentTool : 'thinking';
-        lines.push(truncateToWidth(`  ${lw.name} — ${activity}`, w));
+        lines.push(truncateToWidth(`  ↻ ${lw.name} — ${activity}`, w));
       }
     }
 
@@ -445,15 +733,18 @@ export class SwarmOverlay implements Component, Focusable {
     }
 
     lines.push('', '## Recent Activity');
-    for (const worker of workers.slice(0, 15)) {
+    const max = this.tier(w) === 'wide' ? 20 : this.tier(w) === 'compact' ? 10 : 15;
+    for (const worker of workers.slice(0, max)) {
       const status =
         worker.status === 'completed'
-          ? '✅'
+          ? '✓'
           : worker.status === 'failed'
-            ? '❌'
+            ? '✗'
             : worker.status === 'stopped'
-              ? '⏹'
-              : '🔄';
+              ? '■'
+              : worker.status === 'running'
+                ? '●'
+                : '○';
       const ended = worker.endedAt ? ` · ${new Date(worker.endedAt).toLocaleTimeString()}` : '';
       const msg = worker.statusMessage ? ` — ${worker.statusMessage}` : '';
       lines.push(truncateToWidth(`  ${status} ${worker.name} (${worker.role})${ended}${msg}`, w));
@@ -479,10 +770,82 @@ export class SwarmOverlay implements Component, Focusable {
     return lines;
   }
 
+  /** §22.10 — running workers matching the active search query. */
+  private filteredRunning(): SpawnedAgent[] {
+    const running = listSpawned(this.cwd, SUPERVISOR_SESSION, true).filter(
+      (w) => w.status === 'running'
+    );
+    if (!this.searchQuery) return running;
+    return running.filter((w) => this.matchesQuery(w, this.searchQuery));
+  }
+
+  private matchesQuery(w: SpawnedAgent, q: string): boolean {
+    const ql = q.toLowerCase();
+    return [w.name, w.poolId, w.currentBeadId, w.phase, w.model, w.status]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(ql));
+  }
+
+  /** §22.4 detail pane — full record for the selected worker. */
+  private renderWorkerDetail(
+    worker: SpawnedAgent,
+    liveWorkers: ReturnType<typeof getLiveWorkers>,
+    w: number
+  ): string[] {
+    const lines: string[] = [];
+    const lw = Array.from(liveWorkers.values()).find((l) => l.name === worker.name);
+    const recentArr = lw?.progress?.recentTools ?? [];
+    const recent =
+      recentArr
+        .slice(-6)
+        .map((t) => '    ' + t)
+        .join('\n') || '    (none)';
+    const mode = lw ? 'attached' : 'detached';
+    const row = (label: string, value: string) => truncateToWidth(`  ${label}: ${value}`, w);
+    lines.push('', this.theme.fg('accent', '## Worker Detail'));
+    lines.push(row('spawn ID', worker.id));
+    lines.push(row('name', worker.name + ' (' + worker.role + ')'));
+    lines.push(row('PID', worker.pid != null ? String(worker.pid) : '—'));
+    lines.push(row('session', worker.sessionId ?? '—'));
+    lines.push(row('requested model', worker.model ?? '—'));
+    lines.push(row('actual model', worker.actualModel ?? '—'));
+    lines.push(row('claimed bead', worker.currentBeadId ?? '—'));
+    lines.push(row('reported task', lw?.taskId ?? '—'));
+    lines.push(row('phase', worker.phase ?? '—'));
+    lines.push(row('status', worker.status));
+    lines.push(row('status msg', worker.statusMessage ?? '—'));
+    lines.push(row('runtime mode', mode));
+    lines.push(row('started', new Date(worker.startedAt).toLocaleTimeString()));
+    lines.push(row('ended', worker.endedAt ? new Date(worker.endedAt).toLocaleTimeString() : '—'));
+    lines.push(row('exit', worker.exitCode != null ? String(worker.exitCode) : '—'));
+    lines.push(row('error', worker.error ?? '—'));
+    lines.push(this.theme.fg('dim', '  recent tools:'));
+    lines.push(this.theme.fg('dim', recent));
+    return lines;
+  }
+
+  /** §22.9 — keybind help overlay. */
+  private renderHelp(w: number): string[] {
+    const lines: string[] = [];
+    const entry = (k: string, d: string) => this.theme.fg('dim', this.pad(k, 10) + '  ' + d);
+    lines.push('', this.theme.fg('accent', '## Help — /swarm keybinds'));
+    lines.push(entry('1-5', 'switch panel (Overview/Workers/Pools/Activity/Diagnostics)'));
+    lines.push(entry('Tab', 'cycle panels'));
+    lines.push(entry('j/k', 'move selection (Workers)'));
+    lines.push(entry('Enter', 'open / close worker detail (Workers)'));
+    lines.push(entry('/', 'search workers (name/pool/bead/phase/model/status)'));
+    lines.push(entry('?', 'toggle this help'));
+    lines.push(entry('S/p/P/s', 'start / pause / resume / stop supervisor'));
+    lines.push(entry('v', 'toggle view-only (disables mutating keys)'));
+    lines.push(entry('b', 'background — snapshot without closing'));
+    lines.push(entry('q/Esc', 'close overlay (Esc closes detail/search/help first)'));
+    return lines;
+  }
+
   private renderFooter(w: number): string {
     const hints = this.viewOnly
-      ? 'v:view-only · Tab/1-5: panels · j/k: navigate · q: quit'
-      : 'S:start p:pause P:resume s:stop · v:view-only · Tab/1-5 · j/k · b:bg · q:quit';
+      ? 'v:view-only · Tab/1-5 · j/k · Enter:detail · /:search · ?:help · q:quit'
+      : 'S:start p:pause P:resume s:stop · v · Tab/1-5 · j/k · Enter · / · ? · b:bg · q:quit';
     return truncateToWidth(this.theme.fg('dim', hints), w);
   }
 
