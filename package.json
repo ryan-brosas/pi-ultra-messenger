@@ -1,6 +1,6 @@
 {
   "name": "pi-ultra-messenger",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "description": "Swarm-first multi-agent messaging and task orchestration extension for Pi",
   "type": "module",
   "author": "Ryan Brosas <https://github.com/ryan-brosas>",
