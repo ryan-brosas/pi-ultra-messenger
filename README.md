@@ -173,6 +173,26 @@ needs a TUI redraw timer (planned for a later phase).
 
 Config locations: `.pi/pi-messenger.json` (project), `~/.pi/agent/pi-messenger.json` (global).
 
+## Releasing
+
+Releases are automated.
+
+- `Test` runs typecheck + tests on every push/PR to `main`.
+- `Sync master` fast-forwards the legacy `master` branch to `main` on every
+  push to `main` (no manual `git push origin main:master`).
+- `Release` builds, tests, and publishes to npm when a `v*` tag is pushed —
+  using the `NPM_TOKEN` repo secret (an npm **automation** token, so CI
+  bypasses 2FA). It can also be run manually from the Actions tab with a tag.
+
+One-command release (from a clean `main`):
+
+```bash
+npm run release:push    # standard-version bumps+commits+tags, then pushes
+```
+
+CI does the rest. The only manual setup is the `NPM_TOKEN` secret (an npm
+Automation or granular publish token).
+
 ## Future Improvements
 
 - **Bead plan-to-memory conversion**: an automated pipeline that converts a

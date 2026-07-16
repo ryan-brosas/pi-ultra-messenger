@@ -1,0 +1,25 @@
+name: Sync master
+
+# The `master` branch is a legacy-URL mirror of `main` (per AGENTS.md, all
+# work happens on main; master stays synchronized for old links). This keeps
+# master fast-forwarded to main on every push to main, so no one has to run
+# `git push origin main:master` by hand.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fast-forward master to main
+        run: git push origin HEAD:master
