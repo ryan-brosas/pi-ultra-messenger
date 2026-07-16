@@ -1,5 +1,32 @@
 # pi-ultra-messenger Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Automatic context-rich Bead quality gate** (`goalRefiner.mode:
+  "automatic"`): the supervisor now scores each ready Bead against
+  executable-memory criteria (outcome, acceptance criteria, verification
+  plan, failure modes, dependencies, implementation context). Thin Beads are
+  withheld from workers and sent once to the configured refiner model,
+  which rewrites the description into self-contained context (marked with an
+  enrichment marker so it is not re-enriched). Already quality-approved
+  Beads keep flowing to workers without waiting. Disabled by default;
+  `manual` mode preserves the prior suggestion-only behavior.
+- `GoalRefinerConfig.minimumQualityScore` (0–100, default 75) tunes the
+  admission threshold. Outcome, acceptance, and verification are mandatory
+  even when the weighted score clears the threshold.
+- `pi --model` thinking-level suffixes (e.g. `gpt-5.6-sol:medium`) are now
+  stripped for Pi inventory validation so enricher models validate.
+- `pi-ultra-messenger supervisor status` now reports quality-ready count,
+  thin Bead count, threshold, and the Bead currently being enriched.
+
+### Fixed
+
+- `pi-ultra-messenger supervisor start|status|pause|resume|stop` were
+  silently swallowed by the local-command guard and never reached the
+  server-backed lifecycle handler. They now route correctly.
+
 ## [1.0.0] — 2026-07-16
 
 ### Fork from pi-messenger-swarm

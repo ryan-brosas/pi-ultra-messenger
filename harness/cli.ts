@@ -430,14 +430,19 @@ function positional(args: string[], index: number): string | undefined {
 
 /**
  * Handle local commands that don't need the harness server:
- * setup, pool, supervisor — these read/write .pi/pi-messenger.json directly.
+ * setup and pool read/write .pi/pi-messenger.json directly.
+ * supervisor is server-backed and handled in the main switch below.
  */
 async function handleLocalCommand(action: string, args: string[]): Promise<void> {
   const projectRoot = resolveProjectRoot(process.cwd());
   const configPath = path.join(projectRoot, '.pi', 'pi-messenger.json');
   let config: Record<string, unknown> = {};
   if (fs.existsSync(configPath)) {
-    try { config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch { /* start fresh */ }
+    try {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    } catch {
+      /* start fresh */
+    }
   }
   const supervisor = (config.supervisor ?? {}) as Record<string, unknown>;
 
@@ -446,13 +451,19 @@ async function handleLocalCommand(action: string, args: string[]): Promise<void>
     const rest: string[] = [];
     for (const a of args) {
       if (a.startsWith('--worker=')) workerFlags.push(a.slice('--worker='.length));
-      else if (a === '--worker' && args.indexOf(a) + 1 < args.length) { workerFlags.push(args[args.indexOf(a) + 1]); args[args.indexOf(a) + 1] = ''; }
-      else if (a === '--dry-run') rest.push('--dry-run');
+      else if (a === '--worker' && args.indexOf(a) + 1 < args.length) {
+        workerFlags.push(args[args.indexOf(a) + 1]);
+        args[args.indexOf(a) + 1] = '';
+      } else if (a === '--dry-run') rest.push('--dry-run');
       else if (a.startsWith('--max-concurrent=')) rest.push(a);
-      else if (a === '--max-concurrent' && args.indexOf(a) + 1 < args.length) { rest.push(a, args[args.indexOf(a) + 1]); args[args.indexOf(a) + 1] = ''; }
-      else if (a.startsWith('--coordinator=')) rest.push(a);
-      else if (a === '--coordinator' && args.indexOf(a) + 1 < args.length) { rest.push(a, args[args.indexOf(a) + 1]); args[args.indexOf(a) + 1] = ''; }
-      else if (a === '--start') rest.push('--start');
+      else if (a === '--max-concurrent' && args.indexOf(a) + 1 < args.length) {
+        rest.push(a, args[args.indexOf(a) + 1]);
+        args[args.indexOf(a) + 1] = '';
+      } else if (a.startsWith('--coordinator=')) rest.push(a);
+      else if (a === '--coordinator' && args.indexOf(a) + 1 < args.length) {
+        rest.push(a, args[args.indexOf(a) + 1]);
+        args[args.indexOf(a) + 1] = '';
+      } else if (a === '--start') rest.push('--start');
     }
     const maxConcurrent = extractFlag(rest, 'max-concurrent');
     const coordinatorModel = extractFlag(rest, 'coordinator');
@@ -460,11 +471,21 @@ async function handleLocalCommand(action: string, args: string[]): Promise<void>
     const shouldStart = rest.includes('--start');
 
     if (workerFlags.length > 0) {
-      const { config: supConfig, errors } = setupNonInteractive(projectRoot, workerFlags, maxConcurrent ? parseInt(maxConcurrent, 10) : undefined, coordinatorModel, dryRun);
-      if (errors.length > 0) { for (const e of errors) process.stderr.write(`Error: ${e}\n`); process.exit(1); }
+      const { config: supConfig, errors } = setupNonInteractive(
+        projectRoot,
+        workerFlags,
+        maxConcurrent ? parseInt(maxConcurrent, 10) : undefined,
+        coordinatorModel,
+        dryRun
+      );
+      if (errors.length > 0) {
+        for (const e of errors) process.stderr.write(`Error: ${e}\n`);
+        process.exit(1);
+      }
       process.stdout.write(`Setup complete. ${supConfig.workerPools.length} pool(s) configured.\n`);
       if (!dryRun) process.stdout.write('Configuration written to .pi/pi-messenger.json\n');
-      if (shouldStart) process.stdout.write('Run "pi-ultra-messenger supervisor start" to begin.\n');
+      if (shouldStart)
+        process.stdout.write('Run "pi-ultra-messenger supervisor start" to begin.\n');
     } else {
       await setupInteractive(projectRoot);
     }
@@ -475,60 +496,96 @@ async function handleLocalCommand(action: string, args: string[]): Promise<void>
     const sub = args.shift();
     let pools = (supervisor.workerPools ?? []) as Array<Record<string, unknown>>;
     if (sub === 'list') {
-      if (pools.length === 0) { process.stdout.write('No pools configured.\n'); return; }
+      if (pools.length === 0) {
+        process.stdout.write('No pools configured.\n');
+        return;
+      }
       for (const p of pools) {
         const model = typeof p.model === 'object' && p.model ? p.model : {};
-        const modelStr = (model as Record<string, unknown>).mode === 'inherit' ? 'inherit' : (model as Record<string, unknown>).model ?? '?';
-        process.stdout.write(`${p.id}: ${p.workers} workers, model=${modelStr}, enabled=${p.enabled ?? true}\n`);
+        const modelStr =
+          (model as Record<string, unknown>).mode === 'inherit'
+            ? 'inherit'
+            : ((model as Record<string, unknown>).model ?? '?');
+        process.stdout.write(
+          `${p.id}: ${p.workers} workers, model=${modelStr}, enabled=${p.enabled ?? true}\n`
+        );
       }
     } else if (sub === 'add') {
       const model = extractFlag(args, 'model');
       const workers = extractFlag(args, 'workers');
-      if (!model || !workers) { process.stderr.write('Error: pool add requires --model and --workers.\n'); process.exit(1); }
+      if (!model || !workers) {
+        process.stderr.write('Error: pool add requires --model and --workers.\n');
+        process.exit(1);
+      }
       if (model !== 'inherit') {
         const modelErr = validateModelSelection(model);
-        if (modelErr) { process.stderr.write(`Error: ${modelErr}\n`); process.exit(1); }
+        if (modelErr) {
+          process.stderr.write(`Error: ${modelErr}\n`);
+          process.exit(1);
+        }
       }
       const poolId = `pool-${pools.length}`;
-      pools.push({ id: poolId, workers: parseInt(workers, 10), model: model === 'inherit' ? { mode: 'inherit' } : { mode: 'exact', model }, enabled: true });
-      supervisor.workerPools = pools; config.supervisor = supervisor;
+      pools.push({
+        id: poolId,
+        workers: parseInt(workers, 10),
+        model: model === 'inherit' ? { mode: 'inherit' } : { mode: 'exact', model },
+        enabled: true,
+      });
+      supervisor.workerPools = pools;
+      config.supervisor = supervisor;
       mkdirSync(path.dirname(configPath), { recursive: true });
       writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
       process.stdout.write(`Added pool ${poolId}.\n`);
     } else if (sub === 'remove') {
       const id = args[0];
-      if (!id) { process.stderr.write('Error: pool remove requires <id>.\n'); process.exit(1); }
+      if (!id) {
+        process.stderr.write('Error: pool remove requires <id>.\n');
+        process.exit(1);
+      }
       pools = pools.filter((p) => p.id !== id);
-      supervisor.workerPools = pools; config.supervisor = supervisor;
+      supervisor.workerPools = pools;
+      config.supervisor = supervisor;
       writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
       process.stdout.write(`Removed pool ${id}.\n`);
     } else if (sub === 'scale') {
       const id = args[0];
       const workers = extractFlag(args, 'workers');
-      if (!id || !workers) { process.stderr.write('Error: pool scale requires <id> --workers <n>.\n'); process.exit(1); }
+      if (!id || !workers) {
+        process.stderr.write('Error: pool scale requires <id> --workers <n>.\n');
+        process.exit(1);
+      }
       const pool = pools.find((p) => p.id === id);
-      if (!pool) { process.stderr.write(`Error: pool ${id} not found.\n`); process.exit(1); }
+      if (!pool) {
+        process.stderr.write(`Error: pool ${id} not found.\n`);
+        process.exit(1);
+      }
       pool.workers = parseInt(workers, 10);
-      supervisor.workerPools = pools; config.supervisor = supervisor;
+      supervisor.workerPools = pools;
+      config.supervisor = supervisor;
       writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
       process.stdout.write(`Scaled pool ${id} to ${workers} workers.\n`);
     } else if (sub === 'enable' || sub === 'disable') {
       const id = args[0];
-      if (!id) { process.stderr.write(`Error: pool ${sub} requires <id>.\n`); process.exit(1); }
+      if (!id) {
+        process.stderr.write(`Error: pool ${sub} requires <id>.\n`);
+        process.exit(1);
+      }
       const pool = pools.find((p) => p.id === id);
-      if (!pool) { process.stderr.write(`Error: pool ${id} not found.\n`); process.exit(1); }
+      if (!pool) {
+        process.stderr.write(`Error: pool ${id} not found.\n`);
+        process.exit(1);
+      }
       pool.enabled = sub === 'enable';
-      supervisor.workerPools = pools; config.supervisor = supervisor;
+      supervisor.workerPools = pools;
+      config.supervisor = supervisor;
       writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
       process.stdout.write(`${sub === 'enable' ? 'Enabled' : 'Disabled'} pool ${id}.\n`);
     } else {
-      process.stderr.write(`Unknown pool subcommand: ${sub}\n`); process.exit(1);
+      process.stderr.write(`Unknown pool subcommand: ${sub}\n`);
+      process.exit(1);
     }
     return;
   }
-
-  // supervisor is handled by the server-backed switch below
-  if (action === 'supervisor') return;
 }
 
 async function main(): Promise<void> {
@@ -641,11 +698,10 @@ Environment:
   }
 
   // --- Local commands (no server needed) ---
-  if (first === 'setup' || first === 'pool' || first === 'supervisor') {
-    const args = [...rawArgs];
-    args.shift(); // remove the command name
-    const action = first;
-    await handleLocalCommand(action, args);
+  if (first === 'setup' || first === 'pool') {
+    const localArgs = [...rawArgs];
+    localArgs.shift();
+    await handleLocalCommand(first, localArgs);
     return;
   }
 
@@ -653,14 +709,6 @@ Environment:
   if (first.startsWith('{')) {
     if (!(await startServer())) process.exit(1);
     await postAction(first);
-    return;
-  }
-
-  // --- Local commands (no server needed) ---
-  if (first === 'setup' || first === 'pool') {
-    const localArgs = [...rawArgs];
-    localArgs.shift();
-    await handleLocalCommand(first, localArgs);
     return;
   }
 
@@ -720,16 +768,21 @@ Environment:
       const sub = args.shift();
       if (sub === 'run') {
         const model = extractFlag(args, 'model');
-        await postAction(buildAction({
-          action: 'spawn',
-          role: 'Coordinator',
-          agentFile: 'agents/coordinator.md',
-          objective: 'Inspect worker pool state and send coordination messages via Agent Mail. Then exit.',
-          model: model || undefined,
-          message: 'Coordinator run',
-        }));
+        await postAction(
+          buildAction({
+            action: 'spawn',
+            role: 'Coordinator',
+            agentFile: 'agents/coordinator.md',
+            objective:
+              'Inspect worker pool state and send coordination messages via Agent Mail. Then exit.',
+            model: model || undefined,
+            message: 'Coordinator run',
+          })
+        );
       } else {
-        process.stderr.write(`Usage: pi-ultra-messenger coordinator run [--model <provider/model>]\n`);
+        process.stderr.write(
+          `Usage: pi-ultra-messenger coordinator run [--model <provider/model>]\n`
+        );
         process.exit(1);
       }
       break;
@@ -740,16 +793,24 @@ Environment:
       const sub = args.shift();
       if (sub === 'run') {
         const model = extractFlag(args, 'model');
-        await postAction(buildAction({
-          action: 'spawn',
-          role: 'Goal Refiner',
-          agentFile: 'agents/goal-refiner.md',
-          objective: 'Inspect ready work and post suggestion comments via br. Then exit.',
-          model: model || undefined,
-          message: 'Refiner run',
-        }));
+        const targetBead = extractFlag(args, 'bead');
+        const objective = targetBead
+          ? `Enrich bead ${targetBead}: read the bead and relevant project context, then post a concise suggestion-only comment via \`br comments add ${targetBead} ...\`. Do not claim, close, or modify bead state. Do not edit source files. Exit after posting.`
+          : 'Inspect ready work and post suggestion comments via br. Then exit.';
+        await postAction(
+          buildAction({
+            action: 'spawn',
+            role: 'Goal Refiner',
+            agentFile: 'agents/goal-refiner.md',
+            objective,
+            model: model || undefined,
+            message: targetBead ? `Refine ${targetBead}` : 'Refiner run',
+          })
+        );
       } else {
-        process.stderr.write(`Usage: pi-ultra-messenger refiner run [--model <provider/model>]\n`);
+        process.stderr.write(
+          `Usage: pi-ultra-messenger refiner run [--model <provider/model>] [--bead <id>]\n`
+        );
         process.exit(1);
       }
       break;
@@ -827,21 +888,25 @@ Environment:
       if (sub === 'status') {
         const spawnId = extractFlag(args, 'spawn-id') || process.env.PI_SWARM_SPAWN_ID;
         if (!spawnId) {
-          process.stderr.write('Error: worker status requires --spawn-id or PI_SWARM_SPAWN_ID env.\n');
+          process.stderr.write(
+            'Error: worker status requires --spawn-id or PI_SWARM_SPAWN_ID env.\n'
+          );
           process.exit(1);
         }
         const phase = extractFlag(args, 'phase');
         const bead = extractFlag(args, 'bead');
         const agentName = extractFlag(args, 'agent-name') || process.env.PI_AGENT_NAME;
         const message = args.filter((a) => !a.startsWith('--')).join(' ') || undefined;
-        await postAction(buildAction({
-          action: 'worker.status',
-          id: spawnId,
-          phase,
-          taskId: bead,
-          message,
-          name: agentName,
-        }));
+        await postAction(
+          buildAction({
+            action: 'worker.status',
+            id: spawnId,
+            phase,
+            taskId: bead,
+            message,
+            name: agentName,
+          })
+        );
       } else {
         process.stderr.write(`Unknown worker subcommand: ${sub}\n`);
         process.exit(1);
@@ -866,8 +931,18 @@ Environment:
         const snap = resp.snapshot;
         process.stdout.write(`Supervisor: enabled=${snap.enabled} paused=${snap.paused}\n`);
         if (snap.lastReason) process.stdout.write(`Last: ${snap.lastReason}\n`);
-        if (snap.lastReadyCount !== undefined) process.stdout.write(`Ready: ${snap.lastReadyCount}\n`);
-        if (snap.lastSpawnedCount !== undefined) process.stdout.write(`Spawned: ${snap.lastSpawnedCount}\n`);
+        if (snap.lastReadyCount !== undefined)
+          process.stdout.write(`Ready: ${snap.lastReadyCount}\n`);
+        if (snap.lastQualityReadyCount !== undefined)
+          process.stdout.write(`Quality-ready: ${snap.lastQualityReadyCount}\n`);
+        if (snap.lastThinBeadCount !== undefined)
+          process.stdout.write(`Thin: ${snap.lastThinBeadCount}\n`);
+        if (snap.lastQualityThreshold !== undefined)
+          process.stdout.write(`Threshold: ${snap.lastQualityThreshold}\n`);
+        if (snap.lastEnricherBeadId)
+          process.stdout.write(`Enriching: ${snap.lastEnricherBeadId}\n`);
+        if (snap.lastSpawnedCount !== undefined)
+          process.stdout.write(`Spawned: ${snap.lastSpawnedCount}\n`);
       } else {
         process.stdout.write(`Supervisor ${sub} complete.\n`);
       }

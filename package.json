@@ -35,6 +35,7 @@
     "*.ts",
     "*.mjs",
     "dist/**",
+    "agents/**",
     "handlers/**",
     "overlay/**",
     "store/**",

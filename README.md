@@ -121,9 +121,13 @@ AGENTS.md directly.
 - **Coordinator** (`agents/coordinator.md`): one-shot tender that inspects
   worker state and sends coordination messages via Agent Mail. Disabled by
   default. Never gates refill.
-- **Goal Refiner** (`agents/goal-refiner.md`): suggestion-only role that
-  posts refinement comments on ready work. Disabled by default. Never
-  gates refill.
+- **Goal Refiner** (`agents/goal-refiner.md`): suggestion-only role by
+  default (manual). Optionally an automatic context-rich Bead quality gate
+  (`goalRefiner.mode: "automatic"`): thin ready Beads are withheld from
+  workers and sent once to the configured refiner model, which rewrites the
+  description into self-contained executable memory before the next
+  supervisor tick. Already-approved Beads keep flowing to workers without
+  waiting. Never gates all refill.
 
 ## Configuration
 
@@ -139,7 +143,12 @@ AGENTS.md directly.
       { "id": "default", "workers": 3, "model": { "mode": "inherit" }, "enabled": true }
     ],
     "coordinator": { "enabled": false, "model": { "mode": "inherit" }, "mode": "manual" },
-    "goalRefiner": { "enabled": false, "model": { "mode": "inherit" }, "mode": "manual" }
+    "goalRefiner": {
+      "enabled": false,
+      "model": { "mode": "inherit" },
+      "mode": "manual",
+      "minimumQualityScore": 75
+    }
   }
 }
 ```
@@ -148,7 +157,11 @@ Config locations: `.pi/pi-messenger.json` (project), `~/.pi/agent/pi-messenger.j
 
 ## Future Improvements
 
-- **Enrich-first flow**: New bead → enricher (Sol medium) → supervisor re-check → pool worker. Currently the goal refiner runs in `manual` mode, is suggestion-only (posts `br comments` on beads), and never gates refill. It cannot modify bead content, split beads, reprioritize, or add dependencies — only comment. An enrich-first pipeline would require: (1) routing ready beads through enrichment before worker allocation, (2) giving the refiner write access to split/reprioritize/relink beads, (3) a re-check mechanism after enrichment completes, and (4) preserving the "never block worker allocation" design constraint (non-blocking enrichment with concurrent worker allocation).
+- **Bead plan-to-memory conversion**: an automated pipeline that converts a
+  full implementation plan into a dependency-linked set of context-rich
+  Beads (outcome, acceptance criteria, failure modes, verification plan).
+  The automatic quality gate validates and enriches individual ready Beads,
+  but does not yet decompose a plan into them.
 
 ## License
 

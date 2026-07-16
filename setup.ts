@@ -10,7 +10,12 @@ import * as path from 'node:path';
 import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { getModelInventory, isModelAvailable, validateModelSelection } from './model-discovery.js';
-import type { MessengerConfig, SupervisorConfig, WorkerPoolConfig, PiModelSelection } from './config.js';
+import type {
+  MessengerConfig,
+  SupervisorConfig,
+  WorkerPoolConfig,
+  PiModelSelection,
+} from './config.js';
 
 /**
  * Parse --worker 'model=count' flags into pool configs.
@@ -19,14 +24,17 @@ export function parseWorkerFlags(workers: string[]): WorkerPoolConfig[] {
   return workers.map((w, i) => {
     const eq = w.lastIndexOf('=');
     if (eq === -1) {
-      throw new Error(`Invalid --worker format: "${w}". Expected '<model>=<count>' (e.g. 'anthropic/claude-sonnet-5=6').`);
+      throw new Error(
+        `Invalid --worker format: "${w}". Expected '<model>=<count>' (e.g. 'anthropic/claude-sonnet-5=6').`
+      );
     }
     const model = w.slice(0, eq).trim();
     const count = parseInt(w.slice(eq + 1).trim(), 10);
     if (isNaN(count) || count < 0) {
       throw new Error(`Invalid worker count in "${w}". Expected a non-negative integer.`);
     }
-    const selection: PiModelSelection = model === 'inherit' ? { mode: 'inherit' } : { mode: 'exact', model };
+    const selection: PiModelSelection =
+      model === 'inherit' ? { mode: 'inherit' } : { mode: 'exact', model };
     return {
       id: `pool-${i}`,
       workers: count,
@@ -77,6 +85,7 @@ export function buildSupervisorConfig(
       enabled: false,
       model: { mode: 'inherit' },
       mode: 'manual',
+      minimumQualityScore: 75,
     },
   };
 }
@@ -140,7 +149,9 @@ export function setupNonInteractive(
 /**
  * Interactive setup wizard (stdin/stdout).
  */
-export async function setupInteractive(cwd: string): Promise<{ config: SupervisorConfig; errors: string[] }> {
+export async function setupInteractive(
+  cwd: string
+): Promise<{ config: SupervisorConfig; errors: string[] }> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ask = (q: string): Promise<string> => new Promise((resolve) => rl.question(q, resolve));
 
@@ -170,7 +181,9 @@ export async function setupInteractive(cwd: string): Promise<{ config: Superviso
   let poolIdx = 0;
 
   while (addMore) {
-    const modelInput = await ask(`Pool ${poolIdx + 1} model (or 'inherit' for Pi's current model): `);
+    const modelInput = await ask(
+      `Pool ${poolIdx + 1} model (or 'inherit' for Pi's current model): `
+    );
     const trimmed = modelInput.trim() || 'inherit';
 
     if (trimmed !== 'inherit' && !isModelAvailable(trimmed)) {
@@ -212,7 +225,9 @@ export async function setupInteractive(cwd: string): Promise<{ config: Superviso
   writeProjectConfig(cwd, { supervisor, maxConcurrentSpawns: maxConcurrent });
 
   if (shouldStart) {
-    console.log('\nStarting supervisor... (use "pi-ultra-messenger supervisor start" after this setup)');
+    console.log(
+      '\nStarting supervisor... (use "pi-ultra-messenger supervisor start" after this setup)'
+    );
   }
 
   console.log('\nConfiguration written to .pi/pi-messenger.json');

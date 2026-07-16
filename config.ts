@@ -12,9 +12,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { getAgentDir } from '@earendil-works/pi-coding-agent';
 
-export type PiModelSelection =
-  | { mode: 'inherit' }
-  | { mode: 'exact'; model: string };
+export type PiModelSelection = { mode: 'inherit' } | { mode: 'exact'; model: string };
 
 export interface WorkerPoolConfig {
   id: string;
@@ -36,7 +34,8 @@ export interface GoalRefinerConfig {
   enabled: boolean;
   model: PiModelSelection;
   roleFile?: string;
-  mode: 'manual';
+  mode: 'manual' | 'automatic';
+  minimumQualityScore: number;
 }
 
 export interface SupervisorConfig {
@@ -90,6 +89,7 @@ const DEFAULT_SUPERVISOR: SupervisorConfig = {
     enabled: false,
     model: { mode: 'inherit' },
     mode: 'manual',
+    minimumQualityScore: 75,
   },
 };
 
@@ -111,7 +111,6 @@ const DEFAULT_CONFIG: MessengerConfig = {
   maxConcurrentSpawns: 3,
   supervisor: DEFAULT_SUPERVISOR,
 };
-
 
 function readJsonFile(path: string): Record<string, unknown> | null {
   if (!existsSync(path)) return null;
@@ -194,17 +193,24 @@ function mergeSupervisor(sup?: Partial<SupervisorConfig>): SupervisorConfig {
   return {
     enabled: sup.enabled === true,
     paused: sup.paused === true,
-    pollIntervalMs: typeof sup.pollIntervalMs === 'number' && sup.pollIntervalMs > 0 ? sup.pollIntervalMs : DEFAULT_SUPERVISOR.pollIntervalMs,
-    maxStartsPerTick: typeof sup.maxStartsPerTick === 'number' && sup.maxStartsPerTick > 0 ? sup.maxStartsPerTick : DEFAULT_SUPERVISOR.maxStartsPerTick,
-    workerPools: Array.isArray(sup.workerPools) && sup.workerPools.length > 0
-      ? sup.workerPools.map((p, i) => ({
-          id: p.id || `pool-${i}`,
-          workers: typeof p.workers === 'number' ? p.workers : 3,
-          model: p.model || { mode: 'inherit' },
-          roleFile: p.roleFile,
-          enabled: p.enabled !== false,
-        }))
-      : DEFAULT_SUPERVISOR.workerPools,
+    pollIntervalMs:
+      typeof sup.pollIntervalMs === 'number' && sup.pollIntervalMs > 0
+        ? sup.pollIntervalMs
+        : DEFAULT_SUPERVISOR.pollIntervalMs,
+    maxStartsPerTick:
+      typeof sup.maxStartsPerTick === 'number' && sup.maxStartsPerTick > 0
+        ? sup.maxStartsPerTick
+        : DEFAULT_SUPERVISOR.maxStartsPerTick,
+    workerPools:
+      Array.isArray(sup.workerPools) && sup.workerPools.length > 0
+        ? sup.workerPools.map((p, i) => ({
+            id: p.id || `pool-${i}`,
+            workers: typeof p.workers === 'number' ? p.workers : 3,
+            model: p.model || { mode: 'inherit' },
+            roleFile: p.roleFile,
+            enabled: p.enabled !== false,
+          }))
+        : DEFAULT_SUPERVISOR.workerPools,
     coordinator: sup.coordinator
       ? {
           enabled: sup.coordinator.enabled === true,
@@ -219,7 +225,11 @@ function mergeSupervisor(sup?: Partial<SupervisorConfig>): SupervisorConfig {
           enabled: sup.goalRefiner.enabled === true,
           model: sup.goalRefiner.model || { mode: 'inherit' },
           roleFile: sup.goalRefiner.roleFile,
-          mode: 'manual',
+          mode: sup.goalRefiner.mode === 'automatic' ? 'automatic' : 'manual',
+          minimumQualityScore:
+            typeof sup.goalRefiner.minimumQualityScore === 'number'
+              ? Math.min(100, Math.max(0, sup.goalRefiner.minimumQualityScore))
+              : DEFAULT_SUPERVISOR.goalRefiner.minimumQualityScore,
         }
       : DEFAULT_SUPERVISOR.goalRefiner,
   };

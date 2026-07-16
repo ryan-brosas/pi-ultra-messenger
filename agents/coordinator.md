@@ -1,3 +1,7 @@
+---
+role: Coordinator
+---
+
 # Coordinator Role
 
 You are a coordinator agent for the pi-ultra-messenger worker pool.

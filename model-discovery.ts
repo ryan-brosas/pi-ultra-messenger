@@ -20,6 +20,15 @@ export interface PiModelInfo {
 let cachedInventory: PiModelInfo[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const THINKING_SUFFIX = /:(?:off|minimal|low|medium|high|xhigh|max)$/;
+
+/**
+ * Remove Pi's optional `:thinking-level` suffix before inventory lookup.
+ * The suffix remains on the model passed to Pi when a worker is spawned.
+ */
+export function stripThinkingLevel(modelId: string): string {
+  return modelId.replace(THINKING_SUFFIX, '');
+}
 
 /**
  * Parse `pi --list-models` output into structured model info.
@@ -87,10 +96,11 @@ export function refreshModelInventory(): PiModelInfo[] {
  */
 export function isModelAvailable(modelId: string): boolean {
   const inventory = getModelInventory();
-  const slash = modelId.indexOf('/');
-  if (slash === -1) return inventory.some((m) => m.model === modelId);
-  const provider = modelId.slice(0, slash);
-  const model = modelId.slice(slash + 1);
+  const inventoryId = stripThinkingLevel(modelId);
+  const slash = inventoryId.indexOf('/');
+  if (slash === -1) return inventory.some((m) => m.model === inventoryId);
+  const provider = inventoryId.slice(0, slash);
+  const model = inventoryId.slice(slash + 1);
   return inventory.some((m) => m.provider === provider && m.model === model);
 }
 
