@@ -1,14 +1,14 @@
 name: Release
 
 # Publishes to npm when a version tag (v*) is pushed, and can be manually
-# dispatched to publish an existing tag. Auth uses an npm **Granular** access
-# token stored in the NPM_TOKEN secret (granular tokens bypass 2FA, so CI
-# publishes without an OTP). Provenance is signed via GitHub OIDC
-# (id-token: write, below) — `--provenance` needs only that + a public repo.
-#
-# Required secret: NPM_TOKEN — a npm **Granular** token (Read and write,
-# scoped to pi-ultra-messenger), NOT a classic "Publish" token (those require
-# an OTP when 2FA is on).
+# dispatched to publish an existing tag. Authenticates to npm via GitHub OIDC
+# (npm Trusted Publishers) — NO npm token secret required. Requires:
+#   - permissions: id-token: write (below)
+#   - Node 24 so the bundled npm CLI is >= 11.5.1 (trusted publishing support)
+#   - the npm package Trusted Publisher configured: GitHub repo
+#     ryan-brosas/pi-ultra-messenger, workflow release.yml, npm publish
+# Do NOT set NODE_AUTH_TOKEN — npm exchanges the GitHub OIDC token for a
+# short-lived publish token.
 
 on:
   push:
@@ -38,10 +38,10 @@ jobs:
 
       - uses: pnpm/action-setup@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js (Node 24 → npm 11, required for OIDC trusted publishing)
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
 
@@ -59,5 +59,3 @@ jobs:
 
       - name: Publish to npm
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
