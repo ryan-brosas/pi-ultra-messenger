@@ -30,6 +30,7 @@ import * as store from './store.js';
 import { getContextSessionId, getEffectiveSessionId } from './store/shared.js';
 import { syncChannelStateFromDisk } from './store/agents.js';
 import { MessengerOverlay, type OverlayCallbacks } from './overlay/component.js';
+import { SwarmOverlay } from './overlay/swarm-component.js';
 import { MessengerConfigOverlay } from './overlay/config-overlay.js';
 import { loadConfig, matchesAutoRegisterPath, type MessengerConfig } from './config.js';
 import { logFeedEvent, pruneFeed } from './feed/index.js';
@@ -263,77 +264,48 @@ export default function piMessengerExtension(pi: ExtensionAPI) {
   });
 
   pi.registerCommand('swarm', {
-    description: 'Open worker pool overlay (Overview, Workers, Pools, Diagnostics)',
+    description: 'Open worker pool overlay (Overview, Workers, Pools, Activity, Diagnostics)',
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) return;
       latestCtx = ctx;
 
-      const config = loadConfig(process.cwd());
-      const sessionId = 'pi-swarm-supervisor';
-      const workers = listSpawned(process.cwd(), sessionId, true);
-      const running = workers.filter((w) => w.status === 'running');
-      const completed = workers.filter((w) => w.status === 'completed');
-      const failed = workers.filter((w) => w.status === 'failed');
-
-      const lines: string[] = [];
-      lines.push('# Worker Pool', '');
-
-      // Overview
-      lines.push('## Overview');
-      lines.push(`Running: ${running.length}  Completed: ${completed.length}  Failed: ${failed.length}`);
-      lines.push(`Max concurrent: ${config.maxConcurrentSpawns}`);
-      lines.push(`Supervisor: ${config.supervisor.enabled ? 'enabled' : 'disabled'}${config.supervisor.paused ? ' (paused)' : ''}`);
-      lines.push('');
-
-      // Workers
-      if (running.length > 0) {
-        lines.push('## Running Workers');
-        for (const w of running.slice(0, 10)) {
-          const phase = w.phase ? ` · ${w.phase}` : '';
-          const bead = w.currentBeadId ? ` → ${w.currentBeadId}` : '';
-          const msg = w.statusMessage ? ` — ${w.statusMessage}` : '';
-          lines.push(`  ${w.name} (${w.role})${phase}${bead}${msg}`);
-        }
-        lines.push('');
-      }
-
-      // Activity (recent worker events)
-      const recentHistory = workers.slice(0, 5);
-      if (recentHistory.length > 0) {
-        lines.push('## Activity');
-        for (const w of recentHistory) {
-          const status = w.status === 'completed' ? '✅' : w.status === 'failed' ? '❌' : w.status === 'stopped' ? '⏹' : '🔄';
-          const ended = w.endedAt ? ` · ended ${new Date(w.endedAt).toLocaleTimeString()}` : '';
-          lines.push(`  ${status} ${w.name} (${w.role})${ended}`);
-        }
-        lines.push('');
-      }
-
-      // Pools
-      if (config.supervisor.workerPools.length > 0) {
-        lines.push('## Pools');
-        for (const pool of config.supervisor.workerPools) {
-          const model = pool.model.mode === 'inherit' ? 'inherit' : pool.model.model;
-          const state = pool.enabled ? 'enabled' : 'disabled';
-          lines.push(`  ${pool.id}: ${pool.workers} workers · ${model} · ${state}`);
-        }
-        lines.push('');
-      }
-
-      // Diagnostics
-      lines.push('## Diagnostics');
-      lines.push(`Project: ${process.cwd()}`);
-      lines.push(`AGENTS.md: ${fs.existsSync(join(process.cwd(), 'AGENTS.md')) ? 'found' : 'not found'}`);
-      lines.push(`Supervisor session: ${sessionId}`);
-
-      pi.sendMessage(
-        {
-          customType: 'swarm_snapshot',
-          content: lines.join('\n'),
-          display: true,
+      const snapshot = await ctx.ui.custom<string | undefined>(
+        (tui, theme, _keybindings, done) => {
+          overlayTui = tui;
+          return new SwarmOverlay(tui, theme, done, {
+            onBackground: (snapshotText) => {
+              pi.sendMessage(
+                {
+                  customType: 'swarm_snapshot',
+                  content: snapshotText,
+                  display: true,
+                },
+                { triggerTurn: true }
+              );
+            },
+          });
         },
-        { triggerTurn: true }
+        {
+          overlay: true,
+          onHandle: (handle) => {
+            overlayHandle = handle;
+          },
+        }
       );
+
+      if (snapshot) {
+        pi.sendMessage(
+          {
+            customType: 'swarm_snapshot',
+            content: snapshot,
+            display: true,
+          },
+          { triggerTurn: true }
+        );
+      }
+
+      overlayHandle = null;
+      overlayTui = null;
     },
   });
 
