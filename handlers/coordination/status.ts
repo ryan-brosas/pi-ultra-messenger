@@ -20,7 +20,7 @@ export function executeStatus(state: MessengerState, dirs: Dirs, cwd: string = p
     const myRes = state.reservations.map((r) => `🔒 ${truncatePathLeft(r.pattern, 40)}`);
     text += `Reservations: ${myRes.join(', ')}\n`;
   }
-  text += '\nUse `pi-ultra-messenger list` for details, `pi-ultra-messenger swarm` for worker pool status.';
+  text += '\nUse `pi-messenger-swarm list` for details, `pi-messenger-swarm swarm` for worker pool status.';
 
   return result(text, {
     mode: 'status',

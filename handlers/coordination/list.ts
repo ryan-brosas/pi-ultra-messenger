@@ -59,7 +59,7 @@ export function executeList(
   }
 
   lines.push('');
-  lines.push('Use `pi-ultra-messenger swarm` for worker pool status.');
+  lines.push('Use `pi-messenger-swarm swarm` for worker pool status.');
 
   return result(lines.join('\n').trim(), {
     mode: 'list',
