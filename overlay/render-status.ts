@@ -185,7 +185,7 @@ export function renderSwarmList(
 
   if (agents.length === 0) {
     lines.push(theme.fg('dim', 'No spawned agents in this session.'));
-    lines.push(theme.fg('dim', 'spawn: pi-messenger-swarm spawn --role Researcher "..."'));
+    lines.push(theme.fg('dim', 'spawn: pi-ultra-messenger spawn --role Researcher "..."'));
     while (lines.length < height) lines.push('');
     return lines.slice(0, height);
   }

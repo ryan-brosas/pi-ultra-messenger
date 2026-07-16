@@ -6,7 +6,7 @@
  *
  * Architecture:
  * - This extension manages lifecycle hooks (registration, status, overlay, reservations)
- * - A long-lived harness server (pi-messenger-swarm) handles all action dispatch
+ * - A long-lived harness server (pi-ultra-messenger) handles all action dispatch
  * - Models interact via the CLI, not a tool call — no eager invocation risk
  * - The SKILL.md teaches models how to use the CLI
  */
@@ -158,7 +158,7 @@ export default function piMessengerExtension(pi: ExtensionAPI) {
     pi.sendMessage(
       {
         customType: 'messenger_context',
-        content: `You are agent "${state.agentName}" in ${locationPart}. Use pi-messenger-swarm for spawn/status/list. Workers coordinate through MCP Agent Mail and follow the target project's AGENTS.md. Examples: pi-messenger-swarm swarm | pi-messenger-swarm spawn --role Researcher "Analyze X" | pi-messenger-swarm spawn list. Task/feed/send/reserve commands have been removed — use MCP Agent Mail for coordination. See SKILL for full reference.`,
+        content: `You are agent "${state.agentName}" in ${locationPart}. Use pi-ultra-messenger for spawn/status/list. Workers coordinate through MCP Agent Mail and follow the target project's AGENTS.md. Examples: pi-ultra-messenger swarm | pi-ultra-messenger spawn --role Researcher "Analyze X" | pi-ultra-messenger spawn list. Task/feed/send/reserve commands have been removed — use MCP Agent Mail for coordination. See SKILL for full reference.`,
         display: false,
       },
       { triggerTurn: false }
@@ -392,7 +392,7 @@ export default function piMessengerExtension(pi: ExtensionAPI) {
     }
 
     // Install the CLI wrapper so all child bash processes
-    // can find and use pi-messenger-swarm.
+    // can find and use pi-ultra-messenger.
     installShellAlias();
 
     const shouldAutoRegister =
@@ -479,7 +479,7 @@ export default function piMessengerExtension(pi: ExtensionAPI) {
     // that may still be working. The harness handles agent cleanup via its
     // own session tracking — it will unregister this session's agent when
     // handleSessionShutdown runs below. If the harness truly needs to stop,
-    // the user can run `pi-messenger-swarm --stop` explicitly.
+    // the user can run `pi-ultra-messenger --stop` explicitly.
     harnessServer.stop(); // Only stops the process WE spawned (if any)
     overlayOpening = false;
     overlayHandle = null;

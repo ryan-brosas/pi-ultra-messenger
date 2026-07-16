@@ -2,7 +2,7 @@
  * Pi Messenger Harness Server
  *
  * Long-lived HTTP server for action dispatch.
- * Models call `pi-messenger-swarm join` / `pi-messenger-swarm task claim task-1` etc.
+ * Models call `pi-ultra-messenger join` / `pi-ultra-messenger task claim task-1` etc.
  *
  * Multi-agent aware: each request carries an x-caller-pid header
  * (the PID of the calling agent's pi process, discovered by the CLI
@@ -416,7 +416,7 @@ function createHarnessContext(sessionId: string, cwd?: string): HarnessContext {
 }
 
 // Pull-based message delivery: messages are written to the channel feed.
-// Agents read the feed themselves via `pi-messenger-swarm feed --limit 10`.
+// Agents read the feed themselves via `pi-ultra-messenger feed --limit 10`.
 // No RPC push — this is kafka-like, not pub/sub.
 const deliverMessage = (_msg: AgentMailMessage): void => {
   // Messages are already persisted in the feed by the send handler.
@@ -465,7 +465,7 @@ const TEXT_PLAIN = { 'content-type': 'text/plain; charset=utf-8' } as const;
 function serverLog(msg: string): void {
   const ts = new Date().toISOString();
   const line = `[${ts}] ${msg}\n`;
-  const logPath = process.env.PI_MESSENGER_LOG ?? '/tmp/pi-messenger-swarm.log';
+  const logPath = process.env.PI_MESSENGER_LOG ?? '/tmp/pi-ultra-messenger.log';
   try {
     fs.appendFileSync(logPath, line);
   } catch {
@@ -752,7 +752,7 @@ server.listen(PORT, '127.0.0.1', () => {
     ok: true,
     ready: true,
     port: actualPort,
-    message: `pi-messenger-swarm harness listening on http://127.0.0.1:${actualPort}`,
+    message: `pi-ultra-messenger harness listening on http://127.0.0.1:${actualPort}`,
   });
   process.stdout.write(msg + '\n');
   serverLog(`harness v${SERVER_VERSION} started on port ${actualPort}`);

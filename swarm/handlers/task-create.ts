@@ -49,7 +49,7 @@ export function taskCreate(
   const deps = task.depends_on.length > 0 ? `\nDepends on: ${task.depends_on.join(', ')}` : '';
 
   return result(
-    `✅ Created ${task.id}: ${task.title}${deps}\n\nClaim it:\n  pi-messenger-swarm task claim ${task.id}`,
+    `✅ Created ${task.id}: ${task.title}${deps}\n\nClaim it:\n  pi-ultra-messenger task claim ${task.id}`,
     {
       mode: 'task.create',
       channel: normalizeChannelId(channelId),

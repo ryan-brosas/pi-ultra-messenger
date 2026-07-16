@@ -1,42 +1,42 @@
 ---
-name: pi-messenger-swarm
-description: Pi worker pool. Run spawn/list/status via the `pi-messenger-swarm` CLI — a persistent harness server handles process management. Workers coordinate through MCP Agent Mail and the target project's AGENTS.md.
+name: pi-ultra-messenger
+description: Pi worker pool. Run spawn/list/status via the `pi-ultra-messenger` CLI — a persistent harness server handles process management. Workers coordinate through MCP Agent Mail and the target project's AGENTS.md.
 ---
 
 # Pi Ultra Messenger Skill
 
-Pi worker pool via the `pi-messenger-swarm` CLI.
+Pi worker pool via the `pi-ultra-messenger` CLI.
 
 The CLI auto-spawns a long-lived HTTP server (the **harness**) on first use. Every call dispatches an action to the harness, which holds persistent state — agent registrations, spawn history — across calls.
 
 ## Setup
 
-If installed globally, the `pi-messenger-swarm` command is on your PATH. Otherwise, the extension installs a shell wrapper script at `~/.pi/agent/bin/pi-messenger-swarm` which pi adds to PATH automatically.
+If installed globally, the `pi-ultra-messenger` command is on your PATH. Otherwise, the extension installs a shell wrapper script at `~/.pi/agent/bin/pi-ultra-messenger` which pi adds to PATH automatically.
 
 ## Commands
 
 ```bash
-pi-messenger-swarm status          # Show agent status
-pi-messenger-swarm list             # List registered agents
-pi-messenger-swarm swarm            # Show swarm board summary
+pi-ultra-messenger status          # Show agent status
+pi-ultra-messenger list             # List registered agents
+pi-ultra-messenger swarm            # Show swarm board summary
 
-pi-messenger-swarm spawn --role Researcher "Analyze X"
-pi-messenger-swarm spawn --agent-file agents/researcher.md "Analyze the codebase"
-pi-messenger-swarm spawn list
-pi-messenger-swarm spawn history
-pi-messenger-swarm spawn stop <id>
+pi-ultra-messenger spawn --role Researcher "Analyze X"
+pi-ultra-messenger spawn --agent-file agents/researcher.md "Analyze the codebase"
+pi-ultra-messenger spawn list
+pi-ultra-messenger spawn history
+pi-ultra-messenger spawn stop <id>
 
-pi-messenger-swarm --status        # Check if harness server is running
-pi-messenger-swarm --start         # Start the harness server
-pi-messenger-swarm --stop          # Stop the harness server
-pi-messenger-swarm --restart       # Soft restart (preserve workers)
-pi-messenger-swarm --logs          # Tail the server log
+pi-ultra-messenger --status        # Check if harness server is running
+pi-ultra-messenger --start         # Start the harness server
+pi-ultra-messenger --stop          # Stop the harness server
+pi-ultra-messenger --restart       # Soft restart (preserve workers)
+pi-ultra-messenger --logs          # Tail the server log
 ```
 
 ### JSON passthrough
 
 ```bash
-pi-messenger-swarm '{ "action": "spawn", "role": "Researcher", "message": "Analyze X" }'
+pi-ultra-messenger '{ "action": "spawn", "role": "Researcher", "message": "Analyze X" }'
 ```
 
 ### Agent file format
@@ -67,11 +67,11 @@ Workers spawned by this harness follow this protocol:
 
 | Command | Behavior |
 |---------|----------|
-| `pi-messenger-swarm --status` | Print health JSON or exit 1 |
-| `pi-messenger-swarm --start` | Start the harness server |
-| `pi-messenger-swarm --stop` | Graceful shutdown |
-| `pi-messenger-swarm --restart` | Soft restart: clear caches, preserve workers |
-| `pi-messenger-swarm --logs` | `tail -f` the server log |
+| `pi-ultra-messenger --status` | Print health JSON or exit 1 |
+| `pi-ultra-messenger --start` | Start the harness server |
+| `pi-ultra-messenger --stop` | Graceful shutdown |
+| `pi-ultra-messenger --restart` | Soft restart: clear caches, preserve workers |
+| `pi-ultra-messenger --logs` | `tail -f` the server log |
 
 ## Storage layout
 

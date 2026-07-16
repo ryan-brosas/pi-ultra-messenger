@@ -50,7 +50,7 @@ export function createDeliverMessage({
       content += `*${msg.from} is in ${locationPart} (${sender.model})*\n\n`;
     }
 
-    const replyHint = config.replyHint ? ` — reply: pi-messenger-swarm send ${msg.from} "..."` : '';
+    const replyHint = config.replyHint ? ` — reply: pi-ultra-messenger send ${msg.from} "..."` : '';
 
     content += `**Message from ${msg.from}**${replyHint}\n\n${msg.text}`;
 

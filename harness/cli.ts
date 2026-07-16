@@ -1,23 +1,23 @@
 #!/usr/bin/env node
 /**
- * pi-messenger-swarm — Pi worker pool CLI.
+ * pi-ultra-messenger — Pi worker pool CLI.
  *
  * Usage:
- *   pi-messenger-swarm status
- *   pi-messenger-swarm list
- *   pi-messenger-swarm swarm
- *   pi-messenger-swarm spawn --role Researcher "Analyze the protocol" [--persona "..."] [--agent-file path] [--objective "..."] [--context "..."] [--message-file <path>]
- *   pi-messenger-swarm spawn list
- *   pi-messenger-swarm spawn history
- *   pi-messenger-swarm spawn stop <id>
- *   pi-messenger-swarm --status
- *   pi-messenger-swarm --start
- *   pi-messenger-swarm --stop
- *   pi-messenger-swarm --restart
- *   pi-messenger-swarm --logs
+ *   pi-ultra-messenger status
+ *   pi-ultra-messenger list
+ *   pi-ultra-messenger swarm
+ *   pi-ultra-messenger spawn --role Researcher "Analyze the protocol" [--persona "..."] [--agent-file path] [--objective "..."] [--context "..."] [--message-file <path>]
+ *   pi-ultra-messenger spawn list
+ *   pi-ultra-messenger spawn history
+ *   pi-ultra-messenger spawn stop <id>
+ *   pi-ultra-messenger --status
+ *   pi-ultra-messenger --start
+ *   pi-ultra-messenger --stop
+ *   pi-ultra-messenger --restart
+ *   pi-ultra-messenger --logs
  *
  * Also accepts JSON for programmatic use:
- *   pi-messenger-swarm '{ "action": "spawn", "role": "Researcher", "message": "Analyze X" }'
+ *   pi-ultra-messenger '{ "action": "spawn", "role": "Researcher", "message": "Analyze X" }'
  *
  * Coordination surfaces (task/feed/send/reserve/release/channels/join/whois/rename/set_status)
  * have been removed. Workers coordinate through MCP Agent Mail and follow the target
@@ -44,7 +44,7 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PI_MESSENGER_PORT ?? 9877);
 const HOST = '127.0.0.1';
 const BASE_URL = `http://${HOST}:${PORT}`;
-const LOG = process.env.PI_MESSENGER_LOG ?? '/tmp/pi-messenger-swarm.log';
+const LOG = process.env.PI_MESSENGER_LOG ?? '/tmp/pi-ultra-messenger.log';
 const SERVER_SCRIPT = path.resolve(__dirname, 'server.js');
 const CLI_VERSION: string = (() => {
   try {
@@ -113,7 +113,7 @@ function httpPost(
  * Walk the process tree to find the parent "pi" process PID.
  *
  * When the CLI runs inside a pi bash session, the ancestry looks like:
- *   zsh → pi (PID N) → bash -c "pi-messenger-swarm ..." → node (CLI)
+ *   zsh → pi (PID N) → bash -c "pi-ultra-messenger ..." → node (CLI)
  *
  * The wrapper script (`exec node ...`) replaces bash, so process.ppid
  * is typically the pi PID directly.  As a fallback, we walk up a few
@@ -357,7 +357,7 @@ async function startServer(): Promise<boolean> {
     if (await isUp()) return true;
   }
 
-  process.stderr.write(`pi-messenger-swarm: server failed to start on ${BASE_URL} (see ${LOG})\n`);
+  process.stderr.write(`pi-ultra-messenger: server failed to start on ${BASE_URL} (see ${LOG})\n`);
   return false;
 }
 
@@ -464,7 +464,7 @@ async function handleLocalCommand(action: string, args: string[]): Promise<void>
       if (errors.length > 0) { for (const e of errors) process.stderr.write(`Error: ${e}\n`); process.exit(1); }
       process.stdout.write(`Setup complete. ${supConfig.workerPools.length} pool(s) configured.\n`);
       if (!dryRun) process.stdout.write('Configuration written to .pi/pi-messenger.json\n');
-      if (shouldStart) process.stdout.write('Run "pi-messenger-swarm supervisor start" to begin.\n');
+      if (shouldStart) process.stdout.write('Run "pi-ultra-messenger supervisor start" to begin.\n');
     } else {
       await setupInteractive(projectRoot);
     }
@@ -535,7 +535,7 @@ async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
 
   if (rawArgs.length === 0) {
-    process.stderr.write('pi-messenger-swarm: no command provided. Use --help for usage.\n');
+    process.stderr.write('pi-ultra-messenger: no command provided. Use --help for usage.\n');
     process.exit(1);
   }
 
@@ -543,44 +543,44 @@ async function main(): Promise<void> {
 
   // --- Meta commands (no server needed for --help) ---
   if (first === '--help' || first === '-h') {
-    process.stdout.write(`pi-messenger-swarm — Pi worker pool CLI
+    process.stdout.write(`pi-ultra-messenger — Pi worker pool CLI
 
 Usage:
-  pi-messenger-swarm status
-  pi-messenger-swarm list
-  pi-messenger-swarm swarm
+  pi-ultra-messenger status
+  pi-ultra-messenger list
+  pi-ultra-messenger swarm
 
-  pi-messenger-swarm setup [--worker '<model>=<count>'] [--max-concurrent <n>] [--start] [--dry-run]
-  pi-messenger-swarm pool list
-  pi-messenger-swarm pool add --model <provider/model> --workers <n>
-  pi-messenger-swarm pool remove <id>
-  pi-messenger-swarm pool scale <id> --workers <n>
-  pi-messenger-swarm pool enable <id>
-  pi-messenger-swarm pool disable <id>
+  pi-ultra-messenger setup [--worker '<model>=<count>'] [--max-concurrent <n>] [--start] [--dry-run]
+  pi-ultra-messenger pool list
+  pi-ultra-messenger pool add --model <provider/model> --workers <n>
+  pi-ultra-messenger pool remove <id>
+  pi-ultra-messenger pool scale <id> --workers <n>
+  pi-ultra-messenger pool enable <id>
+  pi-ultra-messenger pool disable <id>
 
-  pi-messenger-swarm spawn --role Researcher "Analyze X" [--persona "..."] [--name <name>] [--agent-file <path>] [--objective "..."] [--context "..."] [--message-file <path>] [--model <provider/model>]
-  pi-messenger-swarm spawn list
-  pi-messenger-swarm spawn history
-  pi-messenger-swarm spawn stop <id>
+  pi-ultra-messenger spawn --role Researcher "Analyze X" [--persona "..."] [--name <name>] [--agent-file <path>] [--objective "..."] [--context "..."] [--message-file <path>] [--model <provider/model>]
+  pi-ultra-messenger spawn list
+  pi-ultra-messenger spawn history
+  pi-ultra-messenger spawn stop <id>
 
-  pi-messenger-swarm worker status --phase <phase> [--bead <id>] [--spawn-id <id>] [--agent-name <name>] "<message>"
-  pi-messenger-swarm supervisor status
-  pi-messenger-swarm supervisor pause
-  pi-messenger-swarm supervisor resume
-  pi-messenger-swarm supervisor stop
+  pi-ultra-messenger worker status --phase <phase> [--bead <id>] [--spawn-id <id>] [--agent-name <name>] "<message>"
+  pi-ultra-messenger supervisor status
+  pi-ultra-messenger supervisor pause
+  pi-ultra-messenger supervisor resume
+  pi-ultra-messenger supervisor stop
 
-  pi-messenger-swarm --status    Check if harness server is running
-  pi-messenger-swarm --start     Start the harness server
-  pi-messenger-swarm --stop      Stop the harness server
-  pi-messenger-swarm --restart   Restart the harness server
-  pi-messenger-swarm --logs      Tail the server log
+  pi-ultra-messenger --status    Check if harness server is running
+  pi-ultra-messenger --start     Start the harness server
+  pi-ultra-messenger --stop      Stop the harness server
+  pi-ultra-messenger --restart   Restart the harness server
+  pi-ultra-messenger --logs      Tail the server log
 
 Also accepts JSON for programmatic use:
-  pi-messenger-swarm '{ "action": "spawn", "role": "Researcher", "message": "Analyze X" }'
+  pi-ultra-messenger '{ "action": "spawn", "role": "Researcher", "message": "Analyze X" }'
 
 Environment:
   PI_MESSENGER_PORT     Server port (default: 9877)
-  PI_MESSENGER_LOG      Log file (default: /tmp/pi-messenger-swarm.log)
+  PI_MESSENGER_LOG      Log file (default: /tmp/pi-ultra-messenger.log)
   PI_MESSENGER_DIR      Data directory (project-scoped by default)
   PI_MESSENGER_GLOBAL   Use global data directory if set
 `);
@@ -843,6 +843,6 @@ Environment:
 }
 
 main().catch((err) => {
-  process.stderr.write(`pi-messenger-swarm: ${err instanceof Error ? err.message : err}\n`);
+  process.stderr.write(`pi-ultra-messenger: ${err instanceof Error ? err.message : err}\n`);
   process.exit(1);
 });

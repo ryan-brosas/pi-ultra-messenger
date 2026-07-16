@@ -14,7 +14,7 @@ export function executeSwarmStatus(cwd: string, channelId: string, sessionId: st
 
   if (runningAgents.length === 0 && completedCount === 0 && failedCount === 0) {
     let text = `# Worker Pool ${channelLabel}\n\nNo workers running.`;
-    text += `\n\nSpawn one:\n  pi-messenger-swarm spawn --role Researcher "Investigate ..."`;
+    text += `\n\nSpawn one:\n  pi-ultra-messenger spawn --role Researcher "Investigate ..."`;
     return result(text, {
       mode: 'swarm',
       channel: normalizeChannelId(channelId),
@@ -35,7 +35,7 @@ export function executeSwarmStatus(cwd: string, channelId: string, sessionId: st
   if (completedCount > 0 || failedCount > 0) {
     lines.push('## Worker History');
     lines.push(`- ${completedCount} completed · ${failedCount} failed`);
-    lines.push('- View: pi-messenger-swarm spawn history');
+    lines.push('- View: pi-ultra-messenger spawn history');
     lines.push('');
   }
 

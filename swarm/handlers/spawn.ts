@@ -66,7 +66,7 @@ function spawnList(cwd: string, sessionId: string) {
       return `- ${agent.id}: ${agent.name} (${formatRoleLabel(agent.role)}) · ${agent.status}${tail}`;
     }),
     '',
-    `Use pi-messenger-swarm spawn history to see all agents including completed.`,
+    `Use pi-ultra-messenger spawn history to see all agents including completed.`,
   ];
 
   return result(lines.join('\n'), {

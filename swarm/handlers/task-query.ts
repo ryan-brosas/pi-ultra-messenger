@@ -105,8 +105,8 @@ export function taskStalled(cwd: string, channelId: string, sessionId: string) {
     }),
     '',
     'Options:',
-    '  pi-messenger-swarm send <agent> "status check on <task-id>?"',
-    '  pi-messenger-swarm task reset <task-id>  # reclaim for another agent',
+    '  pi-ultra-messenger send <agent> "status check on <task-id>?"',
+    '  pi-ultra-messenger task reset <task-id>  # reclaim for another agent',
   ];
 
   return result(lines.join('\n'), {

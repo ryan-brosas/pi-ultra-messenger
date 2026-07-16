@@ -1,5 +1,5 @@
 /**
- * pi-messenger-swarm action router.
+ * pi-ultra-messenger action router.
  *
  * Coordination surfaces (task/feed/send/reserve/release/channels/join/whois/rename/set_status)
  * have been removed. Workers coordinate through MCP Agent Mail and follow the target

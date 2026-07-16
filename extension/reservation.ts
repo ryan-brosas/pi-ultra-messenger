@@ -31,7 +31,7 @@ export function handleReservationEnforcement(
   const lines = [filePath, `Reserved by: ${c.agent}${locationPart}`];
   if (c.reason) lines.push(`Reason: "${c.reason}"`);
   lines.push('');
-  lines.push(`Coordinate via pi-messenger-swarm send ${c.agent} "..."`);
+  lines.push(`Coordinate via pi-ultra-messenger send ${c.agent} "..."`);
 
   return { block: true, reason: lines.join('\n') };
 }

@@ -61,7 +61,7 @@ function getProjectRoot(): string {
 }
 
 /**
- * Write a small shell wrapper script at ~/.pi/agent/bin/pi-messenger-swarm
+ * Write a small shell wrapper script at ~/.pi/agent/bin/pi-ultra-messenger
  * that invokes the CLI via node. Pi adds ~/.pi/agent/bin/ to PATH for
  * every bash invocation (`getShellEnv()` prepends it), so the CLI becomes
  * available as a normal command regardless of install method.
@@ -77,7 +77,7 @@ export function installShellAlias(): void {
     }
 
     const { command, prefixArgs, cliPath, cwd } = resolveCli();
-    const linkPath = join(agentBinDir, 'pi-messenger-swarm');
+    const linkPath = join(agentBinDir, 'pi-ultra-messenger');
 
     const argsStr = prefixArgs.length > 0 ? ` ${prefixArgs.join(' ')}` : '';
     const wrapperContent = `#!/bin/sh

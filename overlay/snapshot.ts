@@ -66,7 +66,7 @@ export function generateSwarmSnapshot(
       '',
       `Agents: You (${snapshotIdleLabel(state)})`,
       '',
-      'Create task: pi-messenger-swarm task create --title "..."',
+      'Create task: pi-ultra-messenger task create --title "..."',
     ].join('\n');
   }
 

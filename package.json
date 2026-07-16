@@ -1,5 +1,5 @@
 {
-  "name": "pi-messenger-swarm",
+  "name": "pi-ultra-messenger",
   "version": "0.25.22",
   "description": "Swarm-first multi-agent messaging and task orchestration extension for Pi",
   "type": "module",
@@ -26,7 +26,7 @@
     "cli"
   ],
   "bin": {
-    "pi-messenger-swarm": "dist/harness/cli.js"
+    "pi-ultra-messenger": "dist/harness/cli.js"
   },
   "files": [
     "*.ts",

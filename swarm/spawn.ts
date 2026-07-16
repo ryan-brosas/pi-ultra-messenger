@@ -166,7 +166,7 @@ function generateAgentFile(cwd: string, sessionId: string, agent: SpawnedAgent):
 /**
  * Worker operating protocol — appended to every worker's system prompt.
  * Workers coordinate through MCP Agent Mail and follow the target project's
- * AGENTS.md directly. No pi-messenger-swarm task/feed/channel/reservation commands.
+ * AGENTS.md directly. No pi-ultra-messenger task/feed/channel/reservation commands.
  */
 function buildSwarmProtocol(): string {
   return [
@@ -181,7 +181,7 @@ function buildSwarmProtocol(): string {
     '4. Implement the assigned work completely, following AGENTS.md for checks, self-review,',
     '   UBS/RCH/DCG, Git commit/push, reservation release, and handoff.',
     '5. Report milestone progress via worker status:',
-    '   pi-messenger-swarm worker status --phase implementing --bead <id> "what you just did"',
+    '   pi-ultra-messenger worker status --phase implementing --bead <id> "what you just did"',
     '   The --spawn-id is auto-set from PI_SWARM_SPAWN_ID. Call this every 3-5 tool calls',
     '   or at significant milestones so the operator can see what you are doing.',
     '6. Be concise, evidence-based, and stay in role.',
@@ -293,7 +293,7 @@ function createArgs(state: SpawnState, model?: string): string[] {
   }
 
   if (state.systemPrompt.trim().length > 0) {
-    const promptTmpDir = fs.mkdtempSync(path.join(tmpdir(), 'pi-messenger-swarm-subagent-'));
+    const promptTmpDir = fs.mkdtempSync(path.join(tmpdir(), 'pi-ultra-messenger-subagent-'));
     const promptPath = path.join(
       promptTmpDir,
       `${state.name.replace(/[^\w.-]/g, '_')}-${state.id}.md`
