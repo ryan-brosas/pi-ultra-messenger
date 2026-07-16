@@ -4,6 +4,22 @@
 
 ### Added
 
+- **`/swarm` control plane (Phase C1)**: the overlay can now drive the
+  supervisor from the UI. Overview shows a control bar with `S` Start Swarm,
+  `p` pause, `P` resume, `s` stop (with `y/N` confirmation); a title-bar
+  heartbeat (per-tick `tickCount` via `POST /control status`); worker
+  headroom and per-pool fill gauges; and a `v` view-only mode that disables
+  all mutating keys. All mutations go through the new `POST /control` HTTP
+  endpoint (single authority shared with the CLI) and are audited to
+  `.pi/messenger/control-audit.jsonl` with `source: ui|cli`.
+- `ProjectSupervisorSnapshot.tickCount` increments each tick (backend for the
+  heartbeat).
+- `POST /control` endpoint: `swarm.start` (bootstrap), `pause`/`resume`/`stop`
+  (routed through the same `applySupervisorOp` as `/supervisor`), `status`;
+  returns a fresh `configSnapshot` plus a truthful snapshot.
+
+### Added (earlier)
+
 - **Automatic context-rich Bead quality gate** (`goalRefiner.mode:
   "automatic"`): the supervisor now scores each ready Bead against
   executable-memory criteria (outcome, acceptance criteria, verification

@@ -129,6 +129,24 @@ AGENTS.md directly.
   supervisor tick. Already-approved Beads keep flowing to workers without
   waiting. Never gates all refill.
 
+## `/swarm` Control Plane (Phase C1)
+
+The `/swarm` overlay is evolving from a read-only dashboard into a control
+plane. Phase C1 adds:
+
+- **Supervisor control bar** on Overview: `S` Start Swarm, `p` pause, `P`
+  resume, `s` stop (with `y/N` confirmation).
+- **Heartbeat** in the title bar (flips per supervisor tick; requires the
+  harness reachable).
+- **Gauges**: worker headroom and per-pool fill bars (12-cell block glyphs).
+- **View-only mode** (`v`): disables all mutating keys without crashing.
+- All mutations go through the new `POST /control` HTTP endpoint — the
+  single authority shared with the CLI — and are written to a
+  `control-audit.jsonl` trail with `source: ui|cli`.
+
+State refreshes from disk on the next render; a true per-tick live heartbeat
+needs a TUI redraw timer (planned for a later phase).
+
 ## Configuration
 
 ```json

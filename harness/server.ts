@@ -908,7 +908,8 @@ server.listen(PORT, '127.0.0.1', () => {
     port: actualPort,
     message: `pi-ultra-messenger harness listening on http://127.0.0.1:${actualPort}`,
   });
-  process.stdout.write(msg + '\n');
+  // Quiet the ready banner under vitest so it doesn't pollute test output.
+  if (!process.env.VITEST) process.stdout.write(msg + '\n');
   serverLog(`harness v${SERVER_VERSION} started on port ${actualPort}`);
 });
 
