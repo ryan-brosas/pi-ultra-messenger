@@ -1,6 +1,6 @@
 # pi-ultra-messenger Changelog
 
-## [Unreleased]
+## [0.26.0] — 2026-07-16
 
 ### Added
 
