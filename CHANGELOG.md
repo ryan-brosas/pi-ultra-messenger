@@ -1,3 +1,32 @@
+# pi-ultra-messenger Changelog
+
+## [1.0.0] — 2026-07-16
+
+### Fork from pi-messenger-swarm
+
+Forked `pi-messenger-swarm@0.25.22` (commit `1b17674`) into `pi-ultra-messenger`,
+a continuous Pi worker pool for the Agent Flywheel workflow.
+
+### Added
+
+- Phase 0: Pinned upstream commit, captured local Pi 0.80.6 model fixtures
+- Phase 1: Disabled Pi Messenger coordination routes, worker prompts use Agent Mail
+- Phase 2: Model wiring, --no-session removed, --name added, pool fields
+- Phase 3: Pi RPC model probe, setup wizard, pool commands, config validation
+- Phase 4: ProjectSupervisor with coalesced ticks, br ready client, refill
+- Phase 5: Round-robin multi-pool, worker telemetry, JSONL replay
+- Phase 6: /swarm TUI overlay with five panels
+- Phase 7: Optional coordinator and goal refiner roles
+
+### Removed
+
+- Pi Messenger channels, feed, send, reservations
+- Custom task.* issue database, internal task board
+
+### Renamed
+
+- Package and binary: pi-messenger-swarm to pi-ultra-messenger
+
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
