@@ -320,7 +320,54 @@ export class ProjectSupervisor {
 
     this.snapshot.lastSpawnedCount = spawned;
     this.snapshot.lastReason = spawned > 0 ? `spawned ${spawned} worker(s)` : 'no_deficit';
+
+    // Optional interval coordinator trigger
+    await this.maybeRunIntervalCoordinator(freshConfig, freshRunning, ready.length);
   }
+
+  private lastCoordinatorRunAt = 0;
+  private coordinatorActive = false;
+
+  private async maybeRunIntervalCoordinator(
+    config: MessengerConfig,
+    running: SpawnedAgent[],
+    readyCount: number,
+  ): Promise<void> {
+    const coord = config.supervisor.coordinator;
+    if (!coord.enabled || coord.mode !== 'interval') return;
+    if (this.coordinatorActive) return;
+
+    const intervalMs = (coord.intervalMinutes ?? 5) * 60 * 1000;
+    const now = Date.now();
+    if (now - this.lastCoordinatorRunAt < intervalMs) return;
+
+    // Trigger conditions (§19.6): only run when at least one is true
+    const hasFailedWorker = running.some((w) => w.status === 'failed');
+    const hasNoReadyButInProgress = readyCount === 0 && running.length > 0;
+    if (!hasFailedWorker && !hasNoReadyButInProgress) return;
+
+    this.coordinatorActive = true;
+    this.lastCoordinatorRunAt = now;
+    try {
+      const model = coord.model.mode === 'exact' ? coord.model.model : undefined;
+      spawnSubagent(
+        this.cwd,
+        {
+          role: 'Coordinator',
+          agentFile: 'agents/coordinator.md',
+          objective: 'Inspect worker pool state and send coordination messages via Agent Mail. Then exit.',
+          model,
+        },
+        SUPERVISOR_SESSION_ID,
+        undefined,
+      );
+    } catch {
+      // Coordinator failure is non-fatal — does not pause refill
+    } finally {
+      this.coordinatorActive = false;
+    }
+  }
+
 
   private recordIdle(reason: SupervisorIdleReason): void {
     this.snapshot.lastReason = reason;

@@ -568,6 +568,8 @@ Usage:
   pi-ultra-messenger supervisor pause
   pi-ultra-messenger supervisor resume
   pi-ultra-messenger supervisor stop
+  pi-ultra-messenger coordinator run [--model <provider/model>]
+  pi-ultra-messenger refiner run [--model <provider/model>]
 
   pi-ultra-messenger --status    Check if harness server is running
   pi-ultra-messenger --start     Start the harness server
@@ -710,6 +712,46 @@ Environment:
     }
     case 'swarm': {
       await postAction(buildAction({ action: 'swarm' }));
+      break;
+    }
+
+    // ---- Coordinator ----
+    case 'coordinator': {
+      const sub = args.shift();
+      if (sub === 'run') {
+        const model = extractFlag(args, 'model');
+        await postAction(buildAction({
+          action: 'spawn',
+          role: 'Coordinator',
+          agentFile: 'agents/coordinator.md',
+          objective: 'Inspect worker pool state and send coordination messages via Agent Mail. Then exit.',
+          model: model || undefined,
+          message: 'Coordinator run',
+        }));
+      } else {
+        process.stderr.write(`Usage: pi-ultra-messenger coordinator run [--model <provider/model>]\n`);
+        process.exit(1);
+      }
+      break;
+    }
+
+    // ---- Goal refiner ----
+    case 'refiner': {
+      const sub = args.shift();
+      if (sub === 'run') {
+        const model = extractFlag(args, 'model');
+        await postAction(buildAction({
+          action: 'spawn',
+          role: 'Goal Refiner',
+          agentFile: 'agents/goal-refiner.md',
+          objective: 'Inspect ready work and post suggestion comments via br. Then exit.',
+          model: model || undefined,
+          message: 'Refiner run',
+        }));
+      } else {
+        process.stderr.write(`Usage: pi-ultra-messenger refiner run [--model <provider/model>]\n`);
+        process.exit(1);
+      }
       break;
     }
 
