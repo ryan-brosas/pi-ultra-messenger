@@ -1,11 +1,14 @@
 name: Release
 
 # Publishes to npm when a version tag (v*) is pushed, and can be manually
-# dispatched to publish an existing tag (e.g. to publish a tag that was
-# pushed before this workflow existed). Uses an npm automation token
-# (NPM_TOKEN secret), which bypasses 2FA so CI can publish unattended.
+# dispatched to publish an existing tag. Authenticates to npm via GitHub
+# Actions OpenID Connect (Trusted Publisher) — no NPM_TOKEN secret required.
+# The trust is configured on the npm package page: repo
+# ryan-brosas/pi-ultra-messenger, workflow release.yml, permission npm publish.
 #
-# Required secret: NPM_TOKEN (npm "Automation" or granular publish token).
+# Requires workflow permission `id-token: write` (below). Do NOT set a
+# NODE_AUTH_TOKEN — setup-node derives npm auth from the OIDC token when
+# id-token: write is granted and no token env is provided.
 
 on:
   push:
@@ -20,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   release:
@@ -54,6 +58,4 @@ jobs:
         run: pnpm test
 
       - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
